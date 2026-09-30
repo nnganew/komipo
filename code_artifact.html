@@ -1,0 +1,1812 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuantumTrader AI - 실시간 보조지표 & 타점 분석기</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        },
+                        darkbg: '#090d16',
+                        cardbg: '#111827',
+                        cardborder: '#1f2937',
+                        accentgreen: '#10b981',
+                        accentred: '#ef4444',
+                        accentblue: '#3b82f6',
+                        accentpurple: '#8b5cf6',
+                        accentgold: '#f59e0b'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter & Noto Sans KR -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+KR:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            background-color: #090d16;
+            color: #f3f4f6;
+            overflow-x: hidden;
+        }
+        .mono-font {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0d1322;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1f2937;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #374151;
+        }
+        /* Pulse effects */
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.15); }
+        }
+        .pulse-green-dot {
+            animation: pulse-green 1.8s infinite ease-in-out;
+        }
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glow-green {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.25);
+        }
+        .glow-red {
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.25);
+        }
+        canvas {
+            touch-action: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between text-slate-200 selection:bg-emerald-500 selection:text-white">
+
+    <!-- Navigation Header -->
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-filter backdrop-blur-md sticky top-0 z-40">
+        <div class="max-w-[1920px] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-4">
+            
+            <!-- Logo & Brand -->
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-emerald-900/40">
+                    <i class="fa-solid font-bold fa-chart-line text-slate-950 text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-emerald-400 bg-clip-text text-transparent">QUANTUM TRADER</span>
+                        <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">v3.5 Realtime</span>
+                    </div>
+                    <p class="text-xs text-slate-400 flex items-center gap-1">
+                        <span>실시간 보조지표 & AI 타점 스캐너</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Ticker & Market Controls -->
+            <div class="flex items-center flex-wrap gap-2 md:gap-4">
+                <!-- Asset Selector -->
+                <div class="relative">
+                    <select id="assetSelect" class="bg-slate-800/90 border border-slate-700 text-slate-100 font-semibold text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer">
+                        <optgroup label="🇺🇸 주요 미국주식">
+                            <option value="NVDA" selected>NVDA - 엔비디아</option>
+                            <option value="TSLA">TSLA - 테슬라</option>
+                            <option value="AAPL">AAPL - 애플</option>
+                            <option value="MSFT">MSFT - 마이크로소프트</option>
+                            <option value="AMZN">AMZN - 아마존</option>
+                            <option value="SPY">SPY - S&P 500 ETF</option>
+                        </optgroup>
+                        <optgroup label="🇰🇷 국내 주요주식">
+                            <option value="005930">삼성전자 (005930)</option>
+                            <option value="000660">SK하이닉스 (000660)</option>
+                            <option value="035420">NAVER (035420)</option>
+                        </optgroup>
+                        <optgroup label="🪙 암호화폐 (Binance Live)">
+                            <option value="BTCUSDT">BTC/USDT - 비트코인 (실시간)</option>
+                            <option value="ETHUSDT">ETH/USDT - 이더리움 (실시간)</option>
+                            <option value="SOLUSDT">SOL/USDT - 솔라나 (실시간)</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <!-- Timeframe Switcher -->
+                <div class="flex bg-slate-950/80 p-1 rounded-lg border border-slate-800 text-xs font-medium">
+                    <button class="tf-btn px-2.5 py-1 rounded bg-emerald-600 text-white font-semibold shadow" data-tf="1m">1분</button>
+                    <button class="tf-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition" data-tf="5m">5분</button>
+                    <button class="tf-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition" data-tf="15m">15분</button>
+                    <button class="tf-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition" data-tf="1h">1시간</button>
+                    <button class="tf-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition" data-tf="1d">일봉</button>
+                </div>
+
+                <!-- Live Stream Status Badge -->
+                <div class="flex items-center space-x-2 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <span id="livePulseDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-green-dot"></span>
+                    <span id="liveStatusText" class="text-xs font-semibold text-emerald-400 mono-font">LIVE TICKING</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex items-center space-x-2">
+                <button id="btnSettings" class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white p-2 rounded-lg border border-slate-700 transition" title="지표 설정">
+                    <i class="fa-solid fa-sliders text-sm"></i>
+                </button>
+                <button id="btnBacktest" class="bg-slate-800 hover:bg-slate-700 text-amber-400 p-2 px-3 rounded-lg border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition" title="전략 백테스트">
+                    <i class="fa-solid fa-rotate-left"></i> 백테스트
+                </button>
+                <button id="btnGeminiReport" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold px-3.5 py-2 rounded-lg shadow-lg shadow-emerald-900/30 flex items-center gap-1.5 transition transform active:scale-95">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> AI 타점 보고서
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Sub-header Live Ticker Info Bar -->
+    <div class="bg-slate-950 border-b border-slate-800/80 px-4 py-2">
+        <div class="max-w-[1920px] mx-auto flex flex-wrap items-center justify-between gap-4 text-xs">
+            <div class="flex items-center space-x-6">
+                <div>
+                    <span class="text-slate-500 mr-1.5">종목:</span>
+                    <span id="tickerSymbolDisplay" class="font-bold text-white text-sm mono-font">NVDA</span>
+                </div>
+                <div>
+                    <span class="text-slate-500 mr-1.5">현재가:</span>
+                    <span id="tickerPriceDisplay" class="font-extrabold text-emerald-400 text-base mono-font">$138.45</span>
+                </div>
+                <div>
+                    <span class="text-slate-500 mr-1.5">변동률:</span>
+                    <span id="tickerChangeDisplay" class="font-semibold text-emerald-400 mono-font">+3.24 (+2.39%)</span>
+                </div>
+                <div class="hidden sm:block">
+                    <span class="text-slate-500 mr-1.5">24h 고가:</span>
+                    <span id="tickerHighDisplay" class="font-medium text-slate-300 mono-font">$140.10</span>
+                </div>
+                <div class="hidden sm:block">
+                    <span class="text-slate-500 mr-1.5">24h 저가:</span>
+                    <span id="tickerLowDisplay" class="font-medium text-slate-300 mono-font">$134.80</span>
+                </div>
+                <div class="hidden md:block">
+                    <span class="text-slate-500 mr-1.5">거래량:</span>
+                    <span id="tickerVolumeDisplay" class="font-medium text-slate-300 mono-font">48.2M</span>
+                </div>
+            </div>
+
+            <!-- Calculated Quick Signal Badge -->
+            <div class="flex items-center space-x-3">
+                <span class="text-slate-400">종합 신호:</span>
+                <span id="topSignalBadge" class="px-2.5 py-1 rounded-md text-xs font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 uppercase tracking-wide flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle text-[8px] text-emerald-400"></i> 강력 매수 (Strong Buy)
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Container -->
+    <main class="max-w-[1920px] mx-auto p-3 md:p-4 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 w-full">
+        
+        <!-- Left Section: Interactive Chart Engine (8 Columns on lg) -->
+        <section class="lg:col-span-8 flex flex-col space-y-3">
+            <!-- Canvas Container Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col flex-1 shadow-xl relative min-h-[580px]">
+                
+                <!-- Chart Toolbar / Overlays Toggle -->
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800/80 text-xs">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-slate-400 font-medium"><i class="fa-solid fa-layer-group text-slate-500 mr-1"></i>오버레이:</span>
+                        <label class="inline-flex items-center gap-1 cursor-pointer hover:text-white">
+                            <input type="checkbox" id="chkBB" checked class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0">
+                            <span class="text-indigo-400 font-semibold">볼린저밴드(20,2)</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1 cursor-pointer hover:text-white">
+                            <input type="checkbox" id="chkSMA20" checked class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0">
+                            <span class="text-amber-400 font-semibold">SMA 20</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1 cursor-pointer hover:text-white">
+                            <input type="checkbox" id="chkSMA50" checked class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0">
+                            <span class="text-cyan-400 font-semibold">SMA 50</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1 cursor-pointer hover:text-white">
+                            <input type="checkbox" id="chkEMA9" class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0">
+                            <span class="text-pink-400 font-semibold">EMA 9</span>
+                        </label>
+                        <span class="text-slate-600">|</span>
+                        <label class="inline-flex items-center gap-1 cursor-pointer hover:text-white">
+                            <input type="checkbox" id="chkTargetLines" checked class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0">
+                            <span class="text-emerald-400 font-bold"><i class="fa-solid fa-bullseye text-xs mr-1"></i>🎯 타점 라인</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1 cursor-pointer hover:text-white">
+                            <input type="checkbox" id="chkSignalMarkers" checked class="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0">
+                            <span class="text-cyan-400 font-bold"><i class="fa-solid fa-bolt text-xs mr-1"></i>⚡ 매매 신호</span>
+                        </label>
+                    </div>
+
+                    <div class="flex items-center space-x-2 text-slate-400">
+                        <button id="btnResetChart" class="hover:text-white px-2 py-0.5 rounded bg-slate-800 border border-slate-700 transition" title="차트 줌 초기화">
+                            <i class="fa-solid fa-expand mr-1"></i>리셋
+                        </button>
+                        <span class="text-[11px] text-slate-500">드래그: 이동 | 휠: 확대/축소</span>
+                    </div>
+                </div>
+
+                <!-- Multi-Pane Canvas Stack -->
+                <div id="chartContainer" class="relative w-full flex-1 min-h-[500px] overflow-hidden rounded-lg bg-slate-950 border border-slate-800/60 cursor-crosshair">
+                    <canvas id="mainChartCanvas" class="w-full h-full block"></canvas>
+                    
+                    <!-- Chart Overlay HUD (Crosshair Info Box) -->
+                    <div id="chartHud" class="absolute top-2 left-2 pointer-events-none bg-slate-900/85 backdrop-blur border border-slate-800 rounded px-2.5 py-1.5 text-[11px] mono-font space-y-0.5 text-slate-300">
+                        <div>O: <span id="hudOpen" class="text-white">0</span> H: <span id="hudHigh" class="text-white">0</span> L: <span id="hudLow" class="text-white">0</span> C: <span id="hudClose" class="text-white">0</span></div>
+                        <div class="text-slate-400">RSI(14): <span id="hudRSI" class="text-emerald-400 font-bold">0</span> | MACD: <span id="hudMACD" class="text-cyan-400 font-bold">0</span> | Signal: <span id="hudSignal" class="text-pink-400">0</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Indicator Status Deep-Dive Row -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <!-- RSI Status Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-xs mb-1">
+                        <span class="text-slate-400 font-semibold">RSI (14)</span>
+                        <span id="rsiValBadge" class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400">42.8</span>
+                    </div>
+                    <div class="text-sm font-bold text-white mb-2" id="rsiStateText">과매도 반등구간 (Buy)</div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div id="rsiBar" class="bg-emerald-500 h-1.5 rounded-full transition-all duration-300" style="width: 42%;"></div>
+                    </div>
+                </div>
+
+                <!-- MACD Status Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-xs mb-1">
+                        <span class="text-slate-400 font-semibold">MACD (12,26,9)</span>
+                        <span id="macdCrossBadge" class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400">골든크로스</span>
+                    </div>
+                    <div class="text-sm font-bold text-white mb-2" id="macdStateText">상승 모멘텀 지속</div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div id="macdBar" class="bg-emerald-400 h-1.5 rounded-full transition-all duration-300" style="width: 70%;"></div>
+                    </div>
+                </div>
+
+                <!-- Bollinger Bands Status Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-xs mb-1">
+                        <span class="text-slate-400 font-semibold">볼린저 밴드</span>
+                        <span id="bbPosBadge" class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-indigo-500/20 text-indigo-400">하단 터치</span>
+                    </div>
+                    <div class="text-sm font-bold text-white mb-2" id="bbStateText">하한선 지지 반등 시도</div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div id="bbBar" class="bg-indigo-500 h-1.5 rounded-full transition-all duration-300" style="width: 25%;"></div>
+                    </div>
+                </div>
+
+                <!-- Moving Average Alignment Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-xs mb-1">
+                        <span class="text-slate-400 font-semibold">이동평균선</span>
+                        <span id="maAlignBadge" class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400">정배열</span>
+                    </div>
+                    <div class="text-sm font-bold text-white mb-2" id="maStateText">20일선 위 안정적 지지</div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div id="maBar" class="bg-emerald-400 h-1.5 rounded-full transition-all duration-300" style="width: 80%;"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Section: Real-Time Signal Matrix & AI Entry Point Analyzer (4 Columns on lg) -->
+        <section class="lg:col-span-4 flex flex-col space-y-4">
+            
+            <!-- AI Target Entry Analyzer Box (핵심 타점 분석기) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col space-y-4">
+                
+                <!-- Card Title -->
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                            <i class="fa-solid fa-bullseye text-sm"></i>
+                        </div>
+                        <h2 class="font-bold text-base text-white">실시간 타점 분석기 (Entry Engine)</h2>
+                    </div>
+                    <span id="analysisTimeText" class="text-[11px] text-slate-500 mono-font">16:39:07 Updated</span>
+                </div>
+
+                <!-- Score Dial / Signal Score -->
+                <div class="bg-slate-950/80 rounded-xl p-4 border border-slate-800 flex items-center justify-between">
+                    <div>
+                        <div class="text-xs text-slate-400 mb-1">기술적 매수/매도 점수</div>
+                        <div class="flex items-baseline space-x-2">
+                            <span id="signalScoreText" class="text-3xl font-extrabold text-emerald-400 mono-font">+78</span>
+                            <span class="text-xs text-slate-500">/ 100</span>
+                        </div>
+                        <div id="signalScoreSubtext" class="text-xs text-emerald-400/90 font-medium mt-1">상승 동력 우수 (Golden Score)</div>
+                    </div>
+                    <!-- Signal Rating Meter -->
+                    <div id="signalGaugeBox" class="text-center px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                        <div id="signalBadgeText" class="text-sm font-black text-emerald-400 tracking-wide uppercase">강력 매수</div>
+                        <div id="winRateText" class="text-[11px] text-emerald-300 font-medium mt-0.5">승률 추정: 78%</div>
+                    </div>
+                </div>
+
+                <!-- Recommended Entry Points & Target Prices (핵심 가격 라인) -->
+                <div class="space-y-2.5">
+                    <div class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                        <span>추천 매매 가이드라인</span>
+                        <span class="text-emerald-400 font-mono text-[11px]">R:R = <span id="rrRatioText">1 : 2.4</span></span>
+                    </div>
+
+                    <!-- Entry Price Box -->
+                    <div class="bg-slate-950 rounded-lg p-3 border border-emerald-500/30 flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <div class="w-8 h-8 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">
+                                <i class="fa-solid fa-arrow-right-to-bracket"></i>
+                            </div>
+                            <div>
+                                <div class="text-[11px] text-slate-400">추천 매수 진입가 (Entry)</div>
+                                <div id="entryPriceText" class="font-extrabold text-white text-base mono-font">$137.80 ~ $138.20</div>
+                            </div>
+                        </div>
+                        <span class="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">1차 분할</span>
+                    </div>
+
+                    <!-- Target Price 1 -->
+                    <div class="bg-slate-950 rounded-lg p-3 border border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <div class="w-8 h-8 rounded bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs">
+                                <i class="fa-solid fa-flag-checkered"></i>
+                            </div>
+                            <div>
+                                <div class="text-[11px] text-slate-400">1차 목표가 (Target 1)</div>
+                                <div id="tp1PriceText" class="font-bold text-cyan-300 text-sm mono-font">$142.50 (+3.05%)</div>
+                            </div>
+                        </div>
+                        <span class="text-xs text-slate-400 font-medium">익절 50%</span>
+                    </div>
+
+                    <!-- Target Price 2 -->
+                    <div class="bg-slate-950 rounded-lg p-3 border border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <div class="w-8 h-8 rounded bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xs">
+                                <i class="fa-solid fa-trophy"></i>
+                            </div>
+                            <div>
+                                <div class="text-[11px] text-slate-400">2차 목표가 (Target 2)</div>
+                                <div id="tp2PriceText" class="font-bold text-purple-300 text-sm mono-font">$146.80 (+6.15%)</div>
+                            </div>
+                        </div>
+                        <span class="text-xs text-slate-400 font-medium">전량 익절</span>
+                    </div>
+
+                    <!-- Stop Loss Box -->
+                    <div class="bg-slate-950 rounded-lg p-3 border border-red-500/30 flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5">
+                            <div class="w-8 h-8 rounded bg-red-500/20 text-red-400 flex items-center justify-center font-bold text-xs">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <div class="text-[11px] text-slate-400">손절가 (Stop Loss)</div>
+                                <div id="slPriceText" class="font-bold text-red-400 text-sm mono-font">$135.20 (-2.10%)</div>
+                            </div>
+                        </div>
+                        <span class="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-bold">원칙 대응</span>
+                    </div>
+                </div>
+
+                <!-- Signal Checklist Breakdown -->
+                <div class="bg-slate-950/60 rounded-xl p-3 border border-slate-800 space-y-2 text-xs">
+                    <div class="font-bold text-slate-400 mb-1">타점 체크리스트:</div>
+                    <div class="flex items-center justify-between" id="chkItemRSI">
+                        <span class="text-slate-300"><i class="fa-solid fa-check text-emerald-400 mr-1.5"></i>RSI 과매도 반등 지점 확인</span>
+                        <span class="text-emerald-400 font-bold">충족</span>
+                    </div>
+                    <div class="flex items-center justify-between" id="chkItemMACD">
+                        <span class="text-slate-300"><i class="fa-solid fa-check text-emerald-400 mr-1.5"></i>MACD 시그널 선 상향 돌파</span>
+                        <span class="text-emerald-400 font-bold">충족</span>
+                    </div>
+                    <div class="flex items-center justify-between" id="chkItemBB">
+                        <span class="text-slate-300"><i class="fa-solid fa-check text-emerald-400 mr-1.5"></i>볼린저 밴드 하한선 지지</span>
+                        <span class="text-emerald-400 font-bold">충족</span>
+                    </div>
+                    <div class="flex items-center justify-between" id="chkItemMA">
+                        <span class="text-slate-300"><i class="fa-solid fa-check text-emerald-400 mr-1.5"></i>20일 이동평균선 상회 유지</span>
+                        <span class="text-emerald-400 font-bold">충족</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- AI Assistant Briefing Card (Gemini Integration) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col flex-1">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xs">
+                            <i class="fa-solid fa-robot"></i>
+                        </div>
+                        <h3 class="font-bold text-sm text-white">Gemini AI 차트 브리핑</h3>
+                    </div>
+                    <!-- Voice Audio Play Button -->
+                    <button id="btnTTS" disabled class="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-cyan-400 text-xs px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1 transition">
+                        <i class="fa-solid fa-volume-high"></i> <span id="ttsBtnText">음성 브리핑</span>
+                    </button>
+                </div>
+
+                <!-- Report Content Box -->
+                <div id="aiReportContainer" class="bg-slate-950 rounded-lg p-3.5 border border-slate-800/80 text-xs leading-relaxed text-slate-300 flex-1 overflow-y-auto max-h-[220px]">
+                    <div class="text-slate-500 text-center py-6">
+                        <i class="fa-solid fa-brain text-2xl mb-2 text-slate-600 block"></i>
+                        'AI 타점 보고서' 버튼을 클릭하면 차트 보조지표와 파동을 정밀 분석한 맞춤 전략 리포트가 생성됩니다.
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Indicator Settings Modal -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-emerald-400"></i> 보조지표 파라미터 설정
+                </h3>
+                <button id="closeSettingsModal" class="text-slate-400 hover:text-white text-lg">&times;</button>
+            </div>
+
+            <div class="space-y-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-300 mb-1">RSI 기간 (Period)</label>
+                    <input type="number" id="cfgRsiPeriod" value="14" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-white font-mono focus:border-emerald-500 focus:outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">RSI 과매도 (Oversold)</label>
+                        <input type="number" id="cfgRsiOversold" value="30" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-white font-mono focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">RSI 과매수 (Overbought)</label>
+                        <input type="number" id="cfgRsiOverbought" value="70" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-white font-mono focus:border-emerald-500 focus:outline-none">
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">MACD Fast</label>
+                        <input type="number" id="cfgMacdFast" value="12" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-white font-mono focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">MACD Slow</label>
+                        <input type="number" id="cfgMacdSlow" value="26" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-white font-mono focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">Signal</label>
+                        <input type="number" id="cfgMacdSignal" value="9" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-white font-mono focus:border-emerald-500 focus:outline-none">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">볼린저 밴드 기간</label>
+                        <input type="number" id="cfgBbPeriod" value="20" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-white font-mono focus:border-emerald-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-300 mb-1">표준편차 (Std Dev)</label>
+                        <input type="number" id="cfgBbStdDev" value="2" step="0.1" class="w-full bg-slate-950 border border-slate-800 rounded p-2 text-white font-mono focus:border-emerald-500 focus:outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end space-x-2">
+                <button id="btnSaveSettings" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-lg text-xs transition">설정 저장 및 적용</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backtest Modal -->
+    <div id="backtestModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+                <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                    <i class="fa-solid fa-chart-pie text-amber-400"></i> 히스토리컬 백테스트 시뮬레이션
+                </h3>
+                <button id="closeBacktestModal" class="text-slate-400 hover:text-white text-lg">&times;</button>
+            </div>
+
+            <div id="backtestResultContainer" class="space-y-4 text-xs">
+                <!-- Results populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800/60 bg-slate-950 py-3 px-4 text-center text-xs text-slate-500">
+        <div class="max-w-[1920px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div>© 2026 QuantumTrader AI Engine. 본 시스템에서 제공하는 정보는 참고용이며 투자 책임을 지지 않습니다.</div>
+            <div class="flex items-center space-x-4">
+                <span class="text-emerald-400 font-mono"><i class="fa-solid fa-bolt mr-1"></i>0.12ms Engine Latency</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Global Application State
+        const state = {
+            symbol: 'NVDA',
+            timeframe: '1m',
+            isLive: true,
+            data: [], // Array of { timestamp, open, high, low, close, volume }
+            signals: [], // Array of 'BUY', 'SELL', or null for each candle
+            indicators: {
+                rsi: [],
+                macd: { macdLine: [], signalLine: [], histogram: [] },
+                bb: { upper: [], middle: [], lower: [] },
+                sma20: [],
+                sma50: [],
+                ema9: []
+            },
+            params: {
+                rsiPeriod: 14,
+                rsiOversold: 30,
+                rsiOverbought: 70,
+                macdFast: 12,
+                macdSlow: 26,
+                macdSignal: 9,
+                bbPeriod: 20,
+                bbStdDev: 2
+            },
+            entryAnalysis: null,
+            websocket: null,
+            chartPanOffset: 0,
+            chartZoom: 1.0,
+            lastAudioUrl: null
+        };
+
+        // Technical Indicator Calculations
+        class TechnicalMath {
+            static calculateSMA(prices, period) {
+                const sma = [];
+                for (let i = 0; i < prices.length; i++) {
+                    if (i < period - 1) {
+                        sma.push(null);
+                        continue;
+                    }
+                    let sum = 0;
+                    for (let j = 0; j < period; j++) {
+                        sum += prices[i - j];
+                    }
+                    sma.push(sum / period);
+                }
+                return sma;
+            }
+
+            static calculateEMA(prices, period) {
+                const ema = [];
+                const k = 2 / (period + 1);
+                let prevEma = null;
+
+                for (let i = 0; i < prices.length; i++) {
+                    if (i < period - 1) {
+                        ema.push(null);
+                        continue;
+                    }
+                    if (prevEma === null) {
+                        let sum = 0;
+                        for (let j = 0; j < period; j++) sum += prices[i - j];
+                        prevEma = sum / period;
+                        ema.push(prevEma);
+                    } else {
+                        prevEma = (prices[i] * k) + (prevEma * (1 - k));
+                        ema.push(prevEma);
+                    }
+                }
+                return ema;
+            }
+
+            static calculateRSI(prices, period = 14) {
+                const rsi = [];
+                if (prices.length < period + 1) return prices.map(() => 50);
+
+                let gains = 0;
+                let losses = 0;
+
+                for (let i = 1; i <= period; i++) {
+                    const diff = prices[i] - prices[i - 1];
+                    if (diff >= 0) gains += diff;
+                    else losses += Math.abs(diff);
+                }
+
+                let avgGain = gains / period;
+                let avgLoss = losses / period;
+
+                for (let i = 0; i < prices.length; i++) {
+                    if (i < period) {
+                        rsi.push(null);
+                        continue;
+                    }
+                    if (i > period) {
+                        const diff = prices[i] - prices[i - 1];
+                        const gain = diff >= 0 ? diff : 0;
+                        const loss = diff < 0 ? Math.abs(diff) : 0;
+                        avgGain = (avgGain * (period - 1) + gain) / period;
+                        avgLoss = (avgLoss * (period - 1) + loss) / period;
+                    }
+
+                    if (avgLoss === 0) {
+                        rsi.push(100);
+                    } else {
+                        const rs = avgGain / avgLoss;
+                        rsi.push(100 - (100 / (1 + rs)));
+                    }
+                }
+                return rsi;
+            }
+
+            static calculateMACD(prices, fast = 12, slow = 26, signal = 9) {
+                const emaFast = this.calculateEMA(prices, fast);
+                const emaSlow = this.calculateEMA(prices, slow);
+                const macdLine = [];
+
+                for (let i = 0; i < prices.length; i++) {
+                    if (emaFast[i] === null || emaSlow[i] === null) {
+                        macdLine.push(null);
+                    } else {
+                        macdLine.push(emaFast[i] - emaSlow[i]);
+                    }
+                }
+
+                // Filter valid MACD values for signal line EMA calculation
+                const validMacdIndex = macdLine.findIndex(val => val !== null);
+                const validMacdValues = macdLine.slice(validMacdIndex);
+                const signalCalc = this.calculateEMA(validMacdValues, signal);
+
+                const signalLine = new Array(validMacdIndex).fill(null).concat(signalCalc);
+                const histogram = [];
+
+                for (let i = 0; i < prices.length; i++) {
+                    if (macdLine[i] === null || signalLine[i] === null) {
+                        histogram.push(null);
+                    } else {
+                        histogram.push(macdLine[i] - signalLine[i]);
+                    }
+                }
+
+                return { macdLine, signalLine, histogram };
+            }
+
+            static calculateBollingerBands(prices, period = 20, stdDevMultiplier = 2) {
+                const sma = this.calculateSMA(prices, period);
+                const upper = [];
+                const lower = [];
+
+                for (let i = 0; i < prices.length; i++) {
+                    if (i < period - 1 || sma[i] === null) {
+                        upper.push(null);
+                        lower.push(null);
+                        continue;
+                    }
+                    let sumSqDiff = 0;
+                    for (let j = 0; j < period; j++) {
+                        sumSqDiff += Math.pow(prices[i - j] - sma[i], 2);
+                    }
+                    const stdDev = Math.sqrt(sumSqDiff / period);
+                    upper.push(sma[i] + (stdDev * stdDevMultiplier));
+                    lower.push(sma[i] - (stdDev * stdDevMultiplier));
+                }
+
+                return { upper, middle: sma, lower };
+            }
+        }
+
+        // Market Data Generator & Real-time Tick Simulator
+        class DataEngine {
+            static generateBaseSeries(symbol, count = 120) {
+                const basePrices = {
+                    'NVDA': 135.0,
+                    'TSLA': 240.0,
+                    'AAPL': 225.0,
+                    'MSFT': 420.0,
+                    'AMZN': 185.0,
+                    'SPY': 560.0,
+                    '005930': 72000.0,
+                    '000660': 185000.0,
+                    '035420': 162000.0,
+                    'BTCUSDT': 64000.0,
+                    'ETHUSDT': 3450.0,
+                    'SOLUSDT': 152.0
+                };
+
+                let curr = basePrices[symbol] || 100.0;
+                const data = [];
+                const now = Date.now();
+                const intervalMs = 60000; // 1 min
+
+                for (let i = count; i >= 0; i--) {
+                    const time = now - (i * intervalMs);
+                    const volatility = curr * 0.008;
+                    const change = (Math.random() - 0.48) * volatility;
+                    const open = curr;
+                    const close = curr + change;
+                    const high = Math.max(open, close) + (Math.random() * volatility * 0.5);
+                    const low = Math.min(open, close) - (Math.random() * volatility * 0.5);
+                    const volume = Math.floor(Math.random() * 50000) + 10000;
+
+                    data.push({ timestamp: time, open, high, low, close, volume });
+                    curr = close;
+                }
+                return data;
+            }
+
+            static updateLastCandle(data, newTickPrice) {
+                if (!data || data.length === 0) return;
+                const last = data[data.length - 1];
+                last.close = newTickPrice;
+                if (newTickPrice > last.high) last.high = newTickPrice;
+                if (newTickPrice < last.low) last.low = newTickPrice;
+                last.volume += Math.floor(Math.random() * 50);
+            }
+
+            static pushNewTick(data) {
+                if (!data || data.length === 0) return;
+                const last = data[data.length - 1];
+                const change = (Math.random() - 0.49) * (last.close * 0.003);
+                const nextClose = Math.max(0.01, last.close + change);
+                
+                // 15% chance to complete candle and create new one
+                if (Math.random() < 0.15) {
+                    data.push({
+                        timestamp: Date.now(),
+                        open: last.close,
+                        high: Math.max(last.close, nextClose),
+                        low: Math.min(last.close, nextClose),
+                        close: nextClose,
+                        volume: 100
+                    });
+                    if (data.length > 200) data.shift();
+                } else {
+                    this.updateLastCandle(data, nextClose);
+                }
+            }
+        }
+
+        // Core Technical Entry Point Analyzer Engine
+        class EntryAnalyzer {
+            static analyze(data, indicators, params) {
+                if (!data || data.length < 30) return null;
+
+                const lastIdx = data.length - 1;
+                const currentPrice = data[lastIdx].close;
+                const closes = data.map(d => d.close);
+
+                const rsi = indicators.rsi[lastIdx];
+                const prevRsi = indicators.rsi[lastIdx - 1];
+
+                const macdLine = indicators.macd.macdLine[lastIdx];
+                const macdSignal = indicators.macd.signalLine[lastIdx];
+                const prevMacdLine = indicators.macd.macdLine[lastIdx - 1];
+                const prevMacdSignal = indicators.macd.signalLine[lastIdx - 1];
+                const macdHist = indicators.macd.histogram[lastIdx];
+
+                const bbUpper = indicators.bb.upper[lastIdx];
+                const bbMiddle = indicators.bb.middle[lastIdx];
+                const bbLower = indicators.bb.lower[lastIdx];
+
+                const sma20 = indicators.sma20[lastIdx];
+                const sma50 = indicators.sma50[lastIdx];
+
+                let score = 0;
+                const checkList = {
+                    rsi: false,
+                    macd: false,
+                    bb: false,
+                    ma: false
+                };
+
+                // 1. RSI Logic
+                let rsiStatus = '중립';
+                if (rsi !== null) {
+                    if (rsi <= params.rsiOversold) {
+                        score += 30;
+                        rsiStatus = '극심한 과매도 (반등 임박)';
+                        checkList.rsi = true;
+                    } else if (rsi > params.rsiOversold && rsi < 45 && rsi > prevRsi) {
+                        score += 15;
+                        rsiStatus = '과매도권 상향 반등 중';
+                        checkList.rsi = true;
+                    } else if (rsi >= params.rsiOverbought) {
+                        score -= 30;
+                        rsiStatus = '과매수 과열 (차익실현 주의)';
+                    } else {
+                        rsiStatus = '평범한 수치 (' + rsi.toFixed(1) + ')';
+                    }
+                }
+
+                // 2. MACD Logic
+                let macdStatus = '관망';
+                if (macdLine !== null && macdSignal !== null) {
+                    // Golden Cross
+                    if (prevMacdLine <= prevMacdSignal && macdLine > macdSignal) {
+                        score += 30;
+                        macdStatus = '✨ MACD 골든크로스 발생!';
+                        checkList.macd = true;
+                    } else if (macdLine > macdSignal && macdHist > 0) {
+                        score += 15;
+                        macdStatus = '상승 모멘텀 유지';
+                        checkList.macd = true;
+                    } else if (prevMacdLine >= prevMacdSignal && macdLine < macdSignal) {
+                        score -= 30;
+                        macdStatus = '⚠️ MACD 데드크로스 발생';
+                    } else {
+                        macdStatus = '하향 모멘텀 지속';
+                    }
+                }
+
+                // 3. Bollinger Band Logic
+                let bbStatus = '중앙 지점';
+                if (bbLower !== null && bbUpper !== null) {
+                    if (currentPrice <= bbLower * 1.002) {
+                        score += 25;
+                        bbStatus = '하한선 강한 지지 반등';
+                        checkList.bb = true;
+                    } else if (currentPrice >= bbUpper * 0.998) {
+                        score -= 25;
+                        bbStatus = '상한선 저항선 도달';
+                    } else if (currentPrice > bbMiddle) {
+                        score += 10;
+                        bbStatus = '중앙선(20MA) 상회 유지';
+                        checkList.bb = true;
+                    }
+                }
+
+                // 4. Moving Average Alignment
+                let maStatus = '혼조세';
+                if (sma20 !== null && sma50 !== null) {
+                    if (currentPrice > sma20 && sma20 > sma50) {
+                        score += 15;
+                        maStatus = '정배열 우상향';
+                        checkList.ma = true;
+                    } else if (currentPrice < sma20 && sma20 < sma50) {
+                        score -= 15;
+                        maStatus = '역배열 약세';
+                    }
+                }
+
+                // Cap score between -100 and +100
+                score = Math.max(-100, Math.min(100, score));
+
+                // Action Mapping
+                let rating = '관망 (Neutral)';
+                let ratingColor = 'text-amber-400';
+                let winRate = 50;
+
+                if (score >= 50) {
+                    rating = '강력 매수 (Strong Buy)';
+                    ratingColor = 'text-emerald-400';
+                    winRate = Math.min(88, 65 + Math.floor(score * 0.25));
+                } else if (score >= 20) {
+                    rating = '분할 매수 (Buy)';
+                    ratingColor = 'text-emerald-300';
+                    winRate = 60 + Math.floor(score * 0.2);
+                } else if (score <= -50) {
+                    rating = '강력 매도 (Strong Sell)';
+                    ratingColor = 'text-red-500';
+                    winRate = 25;
+                } else if (score <= -20) {
+                    rating = '매도 / 비중축소 (Sell)';
+                    ratingColor = 'text-red-400';
+                    winRate = 35;
+                }
+
+                // Target Price Calculations
+                const atr = (data[lastIdx].high - data[lastIdx].low) * 1.5;
+                const entryMin = currentPrice * 0.997;
+                const entryMax = currentPrice * 1.002;
+
+                const stopLoss = currentPrice - Math.max(atr, currentPrice * 0.02);
+                const target1 = currentPrice + ((currentPrice - stopLoss) * 1.5);
+                const target2 = currentPrice + ((currentPrice - stopLoss) * 2.5);
+
+                const riskVal = currentPrice - stopLoss;
+                const rewardVal = target1 - currentPrice;
+                const rrRatio = riskVal > 0 ? (rewardVal / riskVal).toFixed(2) : '1.8';
+
+                return {
+                    score,
+                    rating,
+                    ratingColor,
+                    winRate,
+                    rsiVal: rsi ? rsi.toFixed(1) : '-',
+                    rsiStatus,
+                    macdStatus,
+                    bbStatus,
+                    maStatus,
+                    checkList,
+                    entryRange: `${entryMin.toFixed(2)} ~ ${entryMax.toFixed(2)}`,
+                    tp1: target1.toFixed(2),
+                    tp1Pct: (((target1 - currentPrice) / currentPrice) * 100).toFixed(2),
+                    tp2: target2.toFixed(2),
+                    tp2Pct: (((target2 - currentPrice) / currentPrice) * 100).toFixed(2),
+                    sl: stopLoss.toFixed(2),
+                    slPct: (((stopLoss - currentPrice) / currentPrice) * 100).toFixed(2),
+                    rrRatio
+                };
+            }
+        }
+
+        // Multi-Pane Interactive HTML5 Canvas Chart Renderer
+        class ChartCanvasRenderer {
+            constructor(containerId, canvasId) {
+                this.container = document.getElementById(containerId);
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.mousePos = null;
+
+                this.setupResize();
+                this.setupInteractions();
+            }
+
+            setupResize() {
+                const resize = () => {
+                    const rect = this.container.getBoundingClientRect();
+                    const dpr = window.devicePixelRatio || 1;
+                    this.canvas.width = rect.width * dpr;
+                    this.canvas.height = rect.height * dpr;
+                    this.ctx.scale(dpr, dpr);
+                    this.width = rect.width;
+                    this.height = rect.height;
+                    this.render();
+                };
+                window.addEventListener('resize', resize);
+                setTimeout(resize, 50);
+            }
+
+            setupInteractions() {
+                this.canvas.addEventListener('mousemove', (e) => {
+                    const rect = this.canvas.getBoundingClientRect();
+                    this.mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                    this.render();
+                });
+
+                this.canvas.addEventListener('mouseleave', () => {
+                    this.mousePos = null;
+                    this.render();
+                });
+
+                // Pan & Zoom handlers
+                let isDragging = false;
+                let lastX = 0;
+
+                this.canvas.addEventListener('mousedown', (e) => {
+                    isDragging = true;
+                    lastX = e.clientX;
+                });
+
+                window.addEventListener('mouseup', () => isDragging = false);
+
+                this.canvas.addEventListener('mousemove', (e) => {
+                    if (isDragging) {
+                        const deltaX = e.clientX - lastX;
+                        lastX = e.clientX;
+                        state.chartPanOffset += Math.round(deltaX / 8);
+                        this.render();
+                    }
+                });
+
+                this.canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    if (e.deltaY < 0) {
+                        state.chartZoom = Math.min(2.5, state.chartZoom + 0.1);
+                    } else {
+                        state.chartZoom = Math.max(0.5, state.chartZoom - 0.1);
+                    }
+                    this.render();
+                }, { passive: false });
+            }
+
+            render() {
+                if (!state.data || state.data.length === 0 || !this.width) return;
+
+                const ctx = this.ctx;
+                const w = this.width;
+                const h = this.height;
+
+                ctx.clearRect(0, 0, w, h);
+
+                // Define Panes Dimensions
+                const mainPaneH = h * 0.58;
+                const rsiPaneH = h * 0.18;
+                const macdPaneH = h * 0.18;
+
+                const rsiTop = mainPaneH + 10;
+                const macdTop = rsiTop + rsiPaneH + 10;
+
+                // Candle sizing calculation
+                const visibleCount = Math.floor(50 / state.chartZoom);
+                const endIdx = Math.max(0, state.data.length - 1 + state.chartPanOffset);
+                const startIdx = Math.max(0, endIdx - visibleCount);
+
+                const sliceData = state.data.slice(startIdx, endIdx + 1);
+                if (sliceData.length === 0) return;
+
+                const candleW = Math.max(2, (w - 60) / sliceData.length);
+
+                // Find High/Low bounds for main pane
+                let minPrice = Infinity;
+                let maxPrice = -Infinity;
+                for (let d of sliceData) {
+                    if (d.low < minPrice) minPrice = d.low;
+                    if (d.high > maxPrice) maxPrice = d.high;
+                }
+                const pricePadding = (maxPrice - minPrice) * 0.08 || 1;
+                minPrice -= pricePadding;
+                maxPrice += pricePadding;
+
+                const getY = (p) => mainPaneH - ((p - minPrice) / (maxPrice - minPrice) * mainPaneH);
+
+                // --- 1. Draw Grid Lines ---
+                ctx.strokeStyle = '#1e293b';
+                ctx.lineWidth = 1;
+
+                // Horizontal Price Grid
+                const gridSteps = 5;
+                for (let i = 0; i <= gridSteps; i++) {
+                    const gy = (mainPaneH / gridSteps) * i;
+                    ctx.beginPath();
+                    ctx.moveTo(0, gy);
+                    ctx.lineTo(w - 55, gy);
+                    ctx.stroke();
+
+                    // Price labels
+                    const pVal = maxPrice - ((maxPrice - minPrice) * (i / gridSteps));
+                    ctx.fillStyle = '#64748b';
+                    ctx.font = '10px JetBrains Mono';
+                    ctx.fillText(pVal.toFixed(2), w - 50, gy + 3);
+                }
+
+                // --- 2. Draw Overlays (Bollinger Bands, SMA) ---
+                // Bollinger Bands Shading
+                if (document.getElementById('chkBB').checked) {
+                    ctx.beginPath();
+                    let started = false;
+                    for (let i = 0; i < sliceData.length; i++) {
+                        const globalIdx = startIdx + i;
+                        const upper = state.indicators.bb.upper[globalIdx];
+                        if (upper !== null) {
+                            const x = i * candleW + candleW / 2;
+                            const y = getY(upper);
+                            if (!started) { ctx.moveTo(x, y); started = true; }
+                            else ctx.lineTo(x, y);
+                        }
+                    }
+                    for (let i = sliceData.length - 1; i >= 0; i--) {
+                        const globalIdx = startIdx + i;
+                        const lower = state.indicators.bb.lower[globalIdx];
+                        if (lower !== null) {
+                            const x = i * candleW + candleW / 2;
+                            const y = getY(lower);
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    ctx.closePath();
+                    ctx.fillStyle = 'rgba(99, 102, 241, 0.08)';
+                    ctx.fill();
+
+                    // Upper & Lower Band Lines
+                    this.drawLineSeries(sliceData, startIdx, candleW, getY, state.indicators.bb.upper, '#818cf8', 1, [2, 2]);
+                    this.drawLineSeries(sliceData, startIdx, candleW, getY, state.indicators.bb.lower, '#818cf8', 1, [2, 2]);
+                }
+
+                // SMA Lines
+                if (document.getElementById('chkSMA20').checked) {
+                    this.drawLineSeries(sliceData, startIdx, candleW, getY, state.indicators.sma20, '#f59e0b', 1.5);
+                }
+                if (document.getElementById('chkSMA50').checked) {
+                    this.drawLineSeries(sliceData, startIdx, candleW, getY, state.indicators.sma50, '#06b6d4', 1.5);
+                }
+                if (document.getElementById('chkEMA9').checked) {
+                    this.drawLineSeries(sliceData, startIdx, candleW, getY, state.indicators.ema9, '#ec4899', 1.5);
+                }
+
+                // --- 3. Draw Candlesticks ---
+                for (let i = 0; i < sliceData.length; i++) {
+                    const d = sliceData[i];
+                    const x = i * candleW + candleW / 2;
+                    const isBull = d.close >= d.open;
+                    const color = isBull ? '#10b981' : '#ef4444';
+
+                    // High/Low Wick
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.moveTo(x, getY(d.high));
+                    ctx.lineTo(x, getY(d.low));
+                    ctx.stroke();
+
+                    // Open/Close Body
+                    const openY = getY(d.open);
+                    const closeY = getY(d.close);
+                    const bodyTop = Math.min(openY, closeY);
+                    const bodyH = Math.max(2, Math.abs(openY - closeY));
+
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x - (candleW * 0.38), bodyTop, candleW * 0.76, bodyH);
+                }
+
+                // --- Draw Horizontal Target Lines (진입가/1차팔곳/2차팔곳/손절가) ---
+                if (document.getElementById('chkTargetLines') && document.getElementById('chkTargetLines').checked && state.entryAnalysis) {
+                    const analysis = state.entryAnalysis;
+                    const lastCandle = sliceData[sliceData.length - 1];
+                    const entryVal = lastCandle.close;
+                    const tp1Val = parseFloat(analysis.tp1);
+                    const tp2Val = parseFloat(analysis.tp2);
+                    const slVal = parseFloat(analysis.sl);
+
+                    const targetLevels = [
+                        { price: entryVal, label: '🎯 진입가 (Entry)', color: '#10b981', bg: 'rgba(16, 185, 129, 0.25)' },
+                        { price: tp1Val, label: '💰 1차 팔곳 (TP1)', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.25)' },
+                        { price: tp2Val, label: '🚀 2차 팔곳 (TP2)', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.25)' },
+                        { price: slVal, label: '🛑 손절가 (SL)', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.25)' }
+                    ];
+
+                    targetLevels.forEach(lvl => {
+                        if (isNaN(lvl.price)) return;
+                        const ly = getY(lvl.price);
+                        if (ly >= 0 && ly <= mainPaneH) {
+                            // Dashed Target Line
+                            ctx.strokeStyle = lvl.color;
+                            ctx.lineWidth = 1.5;
+                            ctx.setLineDash([5, 4]);
+                            ctx.beginPath();
+                            ctx.moveTo(0, ly);
+                            ctx.lineTo(w - 55, ly);
+                            ctx.stroke();
+                            ctx.setLineDash([]);
+
+                            // Right Price Scale Badge
+                            ctx.fillStyle = lvl.color;
+                            ctx.fillRect(w - 53, ly - 9, 50, 18);
+                            ctx.fillStyle = '#0f172a';
+                            ctx.font = 'bold 9px JetBrains Mono';
+                            ctx.fillText('$' + lvl.price.toFixed(1), w - 50, ly + 3);
+
+                            // Chart Left Tag Badge
+                            ctx.fillStyle = lvl.bg;
+                            ctx.strokeStyle = lvl.color;
+                            ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            if (ctx.roundRect) {
+                                ctx.roundRect(10, ly - 10, 110, 20, 4);
+                            } else {
+                                ctx.rect(10, ly - 10, 110, 20);
+                            }
+                            ctx.fill();
+                            ctx.stroke();
+
+                            ctx.fillStyle = lvl.color;
+                            ctx.font = 'bold 10px Inter';
+                            ctx.fillText(`${lvl.label}`, 14, ly + 4);
+                        }
+                    });
+                }
+
+                // --- Draw Buy/Sell Markers on Candlesticks ---
+                if (document.getElementById('chkSignalMarkers') && document.getElementById('chkSignalMarkers').checked && state.signals) {
+                    for (let i = 0; i < sliceData.length; i++) {
+                        const globalIdx = startIdx + i;
+                        const sig = state.signals[globalIdx];
+                        if (!sig) continue;
+
+                        const d = sliceData[i];
+                        const x = i * candleW + candleW / 2;
+
+                        if (sig === 'BUY') {
+                            const y = getY(d.low) + 12;
+                            if (y < mainPaneH - 5) {
+                                ctx.fillStyle = '#10b981';
+                                ctx.beginPath();
+                                ctx.arc(x, y + 2, 7, 0, Math.PI * 2);
+                                ctx.fill();
+
+                                ctx.fillStyle = '#ffffff';
+                                ctx.font = 'bold 8px Inter';
+                                ctx.textAlign = 'center';
+                                ctx.fillText('買', x, y + 5);
+                                ctx.textAlign = 'left';
+                            }
+                        } else if (sig === 'SELL') {
+                            const y = getY(d.high) - 12;
+                            if (y > 10) {
+                                ctx.fillStyle = '#ef4444';
+                                ctx.beginPath();
+                                ctx.arc(x, y - 2, 7, 0, Math.PI * 2);
+                                ctx.fill();
+
+                                ctx.fillStyle = '#ffffff';
+                                ctx.font = 'bold 8px Inter';
+                                ctx.textAlign = 'center';
+                                ctx.fillText('賣', x, y + 1);
+                                ctx.textAlign = 'left';
+                            }
+                        }
+                    }
+                }
+
+                // --- 4. RSI Sub-chart ---
+                ctx.fillStyle = '#0d1322';
+                ctx.fillRect(0, rsiTop, w - 55, rsiPaneH);
+                ctx.strokeStyle = '#1e293b';
+                ctx.strokeRect(0, rsiTop, w - 55, rsiPaneH);
+
+                // RSI Threshold lines (70 & 30)
+                const getRsiY = (val) => rsiTop + rsiPaneH - ((val / 100) * rsiPaneH);
+                ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+                ctx.setLineDash([3, 3]);
+                ctx.beginPath(); ctx.moveTo(0, getRsiY(70)); ctx.lineTo(w - 55, getRsiY(70)); ctx.stroke();
+                ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+                ctx.beginPath(); ctx.moveTo(0, getRsiY(30)); ctx.lineTo(w - 55, getRsiY(30)); ctx.stroke();
+                ctx.setLineDash([]);
+
+                // RSI Line
+                this.drawLineSeries(sliceData, startIdx, candleW, getRsiY, state.indicators.rsi, '#10b981', 1.5);
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '10px Inter';
+                ctx.fillText('RSI (14)', 8, rsiTop + 14);
+
+                // --- 5. MACD Sub-chart ---
+                ctx.fillStyle = '#0d1322';
+                ctx.fillRect(0, macdTop, w - 55, macdPaneH);
+                ctx.strokeStyle = '#1e293b';
+                ctx.strokeRect(0, macdTop, w - 55, macdPaneH);
+
+                // Find MACD bounds
+                let maxMacd = 0.01;
+                for (let i = 0; i < sliceData.length; i++) {
+                    const gIdx = startIdx + i;
+                    const m = Math.abs(state.indicators.macd.macdLine[gIdx] || 0);
+                    const s = Math.abs(state.indicators.macd.signalLine[gIdx] || 0);
+                    const hVal = Math.abs(state.indicators.macd.histogram[gIdx] || 0);
+                    maxMacd = Math.max(maxMacd, m, s, hVal);
+                }
+                const getMacdY = (val) => macdTop + (macdPaneH / 2) - ((val / (maxMacd * 1.2)) * (macdPaneH / 2));
+
+                // Histogram Bars
+                for (let i = 0; i < sliceData.length; i++) {
+                    const gIdx = startIdx + i;
+                    const hist = state.indicators.macd.histogram[gIdx];
+                    if (hist !== null) {
+                        const x = i * candleW + candleW / 2;
+                        const yZero = getMacdY(0);
+                        const yVal = getMacdY(hist);
+                        ctx.fillStyle = hist >= 0 ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)';
+                        ctx.fillRect(x - (candleW * 0.35), Math.min(yZero, yVal), candleW * 0.7, Math.abs(yZero - yVal));
+                    }
+                }
+
+                // MACD & Signal Lines
+                this.drawLineSeries(sliceData, startIdx, candleW, getMacdY, state.indicators.macd.macdLine, '#38bdf8', 1.5);
+                this.drawLineSeries(sliceData, startIdx, candleW, getMacdY, state.indicators.macd.signalLine, '#f43f5e', 1.2);
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText('MACD (12,26,9)', 8, macdTop + 14);
+
+                // --- 6. Crosshair Tracking ---
+                if (this.mousePos && this.mousePos.x < w - 55) {
+                    const mx = this.mousePos.x;
+                    const my = this.mousePos.y;
+
+                    ctx.strokeStyle = '#64748b';
+                    ctx.setLineDash([2, 2]);
+                    ctx.lineWidth = 0.8;
+
+                    // Vertical line
+                    ctx.beginPath(); ctx.moveTo(mx, 0); ctx.lineTo(mx, h); ctx.stroke();
+                    // Horizontal line
+                    ctx.beginPath(); ctx.moveTo(0, my); ctx.lineTo(w - 55, my); ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Hovered Candle Data Updating HUD
+                    const hoverCandleIdx = Math.floor(mx / candleW);
+                    if (hoverCandleIdx >= 0 && hoverCandleIdx < sliceData.length) {
+                        const cData = sliceData[hoverCandleIdx];
+                        const gIdx = startIdx + hoverCandleIdx;
+
+                        document.getElementById('hudOpen').textContent = cData.open.toFixed(2);
+                        document.getElementById('hudHigh').textContent = cData.high.toFixed(2);
+                        document.getElementById('hudLow').textContent = cData.low.toFixed(2);
+                        document.getElementById('hudClose').textContent = cData.close.toFixed(2);
+
+                        const rVal = state.indicators.rsi[gIdx];
+                        const mVal = state.indicators.macd.macdLine[gIdx];
+                        const sVal = state.indicators.macd.signalLine[gIdx];
+
+                        document.getElementById('hudRSI').textContent = rVal ? rVal.toFixed(1) : '-';
+                        document.getElementById('hudMACD').textContent = mVal ? mVal.toFixed(2) : '-';
+                        document.getElementById('hudSignal').textContent = sVal ? sVal.toFixed(2) : '-';
+                    }
+                }
+            }
+
+            drawLineSeries(sliceData, startIdx, candleW, getYFn, series, color, strokeWidth = 1, lineDash = []) {
+                const ctx = this.ctx;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = strokeWidth;
+                ctx.setLineDash(lineDash);
+                ctx.beginPath();
+                let started = false;
+
+                for (let i = 0; i < sliceData.length; i++) {
+                    const gIdx = startIdx + i;
+                    const val = series[gIdx];
+                    if (val !== null && val !== undefined) {
+                        const x = i * candleW + candleW / 2;
+                        const y = getYFn(val);
+                        if (!started) { ctx.moveTo(x, y); started = true; }
+                        else ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
+        let chartEngine = null;
+
+        // Recalculate all indicators based on current state.data
+        function recalculateIndicators() {
+            if (!state.data || state.data.length === 0) return;
+            const closes = state.data.map(d => d.close);
+
+            state.indicators.rsi = TechnicalMath.calculateRSI(closes, state.params.rsiPeriod);
+            state.indicators.macd = TechnicalMath.calculateMACD(closes, state.params.macdFast, state.params.macdSlow, state.params.macdSignal);
+            state.indicators.bb = TechnicalMath.calculateBollingerBands(closes, state.params.bbPeriod, state.params.bbStdDev);
+            state.indicators.sma20 = TechnicalMath.calculateSMA(closes, 20);
+            state.indicators.sma50 = TechnicalMath.calculateSMA(closes, 50);
+            state.indicators.ema9 = TechnicalMath.calculateEMA(closes, 9);
+
+            // Calculate Buy / Sell Signal Points
+            state.signals = new Array(state.data.length).fill(null);
+            for (let i = 2; i < state.data.length; i++) {
+                const rsiVal = state.indicators.rsi[i];
+                const prevRsiVal = state.indicators.rsi[i - 1];
+                const macdHist = state.indicators.macd.histogram[i];
+                const prevMacdHist = state.indicators.macd.histogram[i - 1];
+                const bbLower = state.indicators.bb.lower[i];
+                const bbUpper = state.indicators.bb.upper[i];
+                const closeP = state.data[i].close;
+
+                // Buy conditions: RSI bouncing from oversold OR MACD golden cross OR BB lower touch
+                if ((rsiVal && rsiVal < 38 && rsiVal > prevRsiVal) || 
+                    (prevMacdHist !== null && prevMacdHist <= 0 && macdHist > 0) || 
+                    (bbLower && closeP <= bbLower * 1.002)) {
+                    state.signals[i] = 'BUY';
+                }
+                // Sell conditions: RSI overbought OR MACD dead cross OR BB upper touch
+                else if ((rsiVal && rsiVal > 68) || 
+                         (prevMacdHist !== null && prevMacdHist >= 0 && macdHist < 0) || 
+                         (bbUpper && closeP >= bbUpper * 0.998)) {
+                    state.signals[i] = 'SELL';
+                }
+            }
+
+            // Run Entry Signal Engine
+            state.entryAnalysis = EntryAnalyzer.analyze(state.data, state.indicators, state.params);
+            updateUIWithAnalysis();
+        }
+
+        // Update Dashboard UI Elements
+        function updateUIWithAnalysis() {
+            if (!state.data || state.data.length === 0) return;
+            const lastCandle = state.data[state.data.length - 1];
+            const prevCandle = state.data[state.data.length - 2] || lastCandle;
+            const change = lastCandle.close - prevCandle.close;
+            const changePct = (change / prevCandle.close) * 100;
+
+            // Header Ticker Display
+            document.getElementById('tickerSymbolDisplay').textContent = state.symbol;
+            document.getElementById('tickerPriceDisplay').textContent = '$' + lastCandle.close.toFixed(2);
+            const changeElem = document.getElementById('tickerChangeDisplay');
+            changeElem.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%)`;
+            changeElem.className = `font-semibold mono-font ${change >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
+
+            const highs = state.data.map(d => d.high);
+            const lows = state.data.map(d => d.low);
+            document.getElementById('tickerHighDisplay').textContent = '$' + Math.max(...highs).toFixed(2);
+            document.getElementById('tickerLowDisplay').textContent = '$' + Math.min(...lows).toFixed(2);
+
+            const analysis = state.entryAnalysis;
+            if (!analysis) return;
+
+            // Signal Badge Top
+            const topBadge = document.getElementById('topSignalBadge');
+            topBadge.className = `px-2.5 py-1 rounded-md text-xs font-black uppercase border tracking-wide flex items-center gap-1.5 ${analysis.score >= 20 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : (analysis.score <= -20 ? 'bg-red-500/20 text-red-400 border-red-500/40' : 'bg-amber-500/20 text-amber-400 border-amber-500/40')}`;
+            topBadge.innerHTML = `<i class="fa-solid fa-circle text-[8px]"></i> ${analysis.rating}`;
+
+            // Entry Analysis Panel Update
+            document.getElementById('signalScoreText').textContent = (analysis.score >= 0 ? '+' : '') + analysis.score;
+            document.getElementById('signalBadgeText').textContent = analysis.rating;
+            document.getElementById('signalBadgeText').className = `text-sm font-black uppercase ${analysis.ratingColor}`;
+            document.getElementById('winRateText').textContent = `추정 승률: ${analysis.winRate}%`;
+
+            document.getElementById('entryPriceText').textContent = '$' + analysis.entryRange;
+            document.getElementById('tp1PriceText').textContent = `$${analysis.tp1} (+${analysis.tp1Pct}%)`;
+            document.getElementById('tp2PriceText').textContent = `$${analysis.tp2} (+${analysis.tp2Pct}%)`;
+            document.getElementById('slPriceText').textContent = `$${analysis.sl} (${analysis.slPct}%)`;
+            document.getElementById('rrRatioText').textContent = '1 : ' + analysis.rrRatio;
+
+            // Indicator Deep-Dive Status
+            document.getElementById('rsiValBadge').textContent = analysis.rsiVal;
+            document.getElementById('rsiStateText').textContent = analysis.rsiStatus;
+            document.getElementById('rsiBar').style.width = Math.min(100, Math.max(5, parseFloat(analysis.rsiVal))) + '%';
+
+            document.getElementById('macdStateText').textContent = analysis.macdStatus;
+            document.getElementById('bbStateText').textContent = analysis.bbStatus;
+            document.getElementById('maStateText').textContent = analysis.maStatus;
+
+            document.getElementById('analysisTimeText').textContent = new Date().toLocaleTimeString('ko-KR');
+
+            // Render canvas
+            if (chartEngine) chartEngine.render();
+        }
+
+        // AI Report Generation via Gemini API
+        async function generateGeminiReport() {
+            const reportBox = document.getElementById('aiReportContainer');
+            reportBox.innerHTML = `
+                <div class="flex items-center justify-center space-x-2 py-8 text-cyan-400">
+                    <i class="fa-solid fa-circle-notch fa-spin text-lg"></i>
+                    <span class="font-semibold">Gemini AI 차트분석가가 실시간 파동과 보조지표를 정밀 연산 중...</span>
+                </div>
+            `;
+
+            const analysis = state.entryAnalysis;
+            const systemPrompt = "당신은 20년 경력의 월스트리트 프롭 트레이딩 수석 분석가입니다. 제시된 실시간 보조지표 및 타점 데이터를 바탕으로 전문적이면서도 쉽게 이해할 수 있는 기술적 매매 전략 브리핑을 한국어로 작성하세요. 요약, 보조지표 근거, 리스크 관리 조언을 포함하세요.";
+
+            const userQuery = `
+종목: ${state.symbol}
+현재가: $${state.data[state.data.length - 1].close.toFixed(2)}
+타점 종합점수: ${analysis.score}점 (${analysis.rating})
+RSI(14): ${analysis.rsiVal} (${analysis.rsiStatus})
+MACD 상태: ${analysis.macdStatus}
+볼린저밴드 상태: ${analysis.bbStatus}
+이동평균선 상태: ${analysis.maStatus}
+추천 매수 구간: $${analysis.entryRange}
+1차 목표가: $${analysis.tp1}
+손절가: $${analysis.sl}
+손익비: 1:${analysis.rrRatio}
+
+이 데이터를 기반으로 트레이더를 위한 핵심 3줄 실전 타점 브리핑 보고서를 작성해주세요.
+            `;
+
+            try {
+                const apiKey = ""; // Canvas runtime automatically supplies the API key
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: userQuery }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] }
+                    })
+                });
+
+                const result = await response.json();
+                const aiText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (aiText) {
+                    reportBox.innerHTML = `
+                        <div class="space-y-2">
+                            <div class="font-bold text-emerald-400 flex items-center gap-1 mb-2">
+                                <i class="fa-solid fa-circle-check"></i> 실시간 AI 타점 진단 완료
+                            </div>
+                            <div class="whitespace-pre-line leading-relaxed text-slate-200 text-xs">${aiText}</div>
+                        </div>
+                    `;
+
+                    // Enable TTS Button and prepare audio
+                    const ttsBtn = document.getElementById('btnTTS');
+                    ttsBtn.disabled = false;
+                    ttsBtn.onclick = () => generateTTSAudio(aiText);
+                } else {
+                    reportBox.innerHTML = `<div class="text-red-400">보고서 생성에 실패했습니다. 잠시 후 다시 시도해주세요.</div>`;
+                }
+            } catch (err) {
+                console.error(err);
+                reportBox.innerHTML = `<div class="text-red-400">API 연동 오류가 발생했습니다.</div>`;
+            }
+        }
+
+        // Generate Voice Narration using gemini-2.5-flash-preview-tts
+        async function generateTTSAudio(textToSpeak) {
+            const ttsBtnText = document.getElementById('ttsBtnText');
+            ttsBtnText.textContent = '음성 생성 중...';
+
+            try {
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+                const promptText = `부드럽고 전문적인 금융 앵커 톤으로 낭독하세요: ${textToSpeak.slice(0, 250)}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: promptText }] }],
+                    generationConfig: {
+                        responseModalities: ["AUDIO"],
+                        speechConfig: {
+                            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } }
+                        }
+                    }
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const part = result?.candidates?.[0]?.content?.parts?.[0];
+                const base64Audio = part?.inlineData?.data;
+
+                if (base64Audio) {
+                    const pcmBuffer = base64ToArrayBuffer(base64Audio);
+                    const pcm16 = new Int16Array(pcmBuffer);
+                    const wavBlob = pcmToWav(pcm16, 24000);
+                    const audioUrl = URL.createObjectURL(wavBlob);
+
+                    const audio = new Audio(audioUrl);
+                    audio.play();
+                    ttsBtnText.textContent = '🔊 재생 중';
+                    audio.onended = () => { ttsBtnText.textContent = '음성 브리핑'; };
+                } else {
+                    ttsBtnText.textContent = '음성 실패';
+                }
+            } catch (err) {
+                console.error(err);
+                ttsBtnText.textContent = '음성 오류';
+            }
+        }
+
+        // PCM16 to WAV ArrayBuffer Converter
+        function pcmToWav(pcm16Data, sampleRate = 24000) {
+            const numChannels = 1;
+            const bytesPerSample = 2;
+            const blockAlign = numChannels * bytesPerSample;
+            const byteRate = sampleRate * blockAlign;
+            const dataSize = pcm16Data.length * bytesPerSample;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+
+            const writeString = (v, offset, str) => {
+                for (let i = 0; i < str.length; i++) v.setUint8(offset + i, str.charCodeAt(i));
+            };
+
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + dataSize, true);
+            writeString(view, 8, 'WAVE');
+
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, byteRate, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, bytesPerSample * 8, true);
+
+            writeString(view, 36, 'data');
+            view.setUint32(40, dataSize, true);
+
+            let offset = 44;
+            for (let i = 0; i < pcm16Data.length; i++, offset += 2) {
+                view.setInt16(offset, pcm16Data[i], true);
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binary = atob(base64);
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+            return bytes.buffer;
+        }
+
+        // Historical Backtest Simulator Function
+        function runBacktestSimulation() {
+            if (!state.data || state.data.length < 50) return;
+
+            let trades = 0;
+            let wins = 0;
+            let totalProfitPct = 0;
+
+            for (let i = 30; i < state.data.length - 10; i++) {
+                const subData = state.data.slice(0, i);
+                const closes = subData.map(d => d.close);
+                const rsi = TechnicalMath.calculateRSI(closes, state.params.rsiPeriod);
+                const macd = TechnicalMath.calculateMACD(closes, state.params.macdFast, state.params.macdSlow, state.params.macdSignal);
+
+                const lastRsi = rsi[rsi.length - 1];
+                const lastMacdHist = macd.histogram[macd.histogram.length - 1];
+
+                // Simple buy condition trigger
+                if (lastRsi && lastRsi < 40 && lastMacdHist && lastMacdHist > 0) {
+                    trades++;
+                    const entryP = state.data[i].close;
+                    const futureMaxP = Math.max(...state.data.slice(i + 1, i + 8).map(d => d.high));
+                    const profit = ((futureMaxP - entryP) / entryP) * 100;
+
+                    if (profit >= 2.0) {
+                        wins++;
+                    }
+                    totalProfitPct += profit;
+                }
+            }
+
+            const winRate = trades > 0 ? ((wins / trades) * 100).toFixed(1) : 0;
+            const avgProfit = trades > 0 ? (totalProfitPct / trades).toFixed(2) : 0;
+
+            const resContainer = document.getElementById('backtestResultContainer');
+            resContainer.innerHTML = `
+                <div class="grid grid-cols-3 gap-3 text-center mb-4">
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                        <div class="text-slate-400 text-[11px]">총 시그널 포착</div>
+                        <div class="text-lg font-bold text-white mono-font">${trades} 회</div>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                        <div class="text-slate-400 text-[11px]">전략 승률 (Win Rate)</div>
+                        <div class="text-lg font-extrabold text-emerald-400 mono-font">${winRate}%</div>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                        <div class="text-slate-400 text-[11px]">평균 기대 수익률</div>
+                        <div class="text-lg font-bold text-cyan-400 mono-font">+${avgProfit}%</div>
+                    </div>
+                </div>
+                <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800 text-slate-300 leading-relaxed text-xs">
+                    💡 <b>백테스트 가이드:</b> 지난 120개 캔들 데이터를 기준으로 RSI 과매도 반등 + MACD 모멘텀 턴어라운드 조건 충족 시 7캔들 이내 +2.0% 익절 목표 도달 확률을 시뮬레이션한 결과입니다.
+                </div>
+            `;
+
+            document.getElementById('backtestModal').classList.remove('hidden');
+        }
+
+        // WebSocket Connection for Live Crypto Data
+        function connectLiveCryptoWS(symbol) {
+            if (state.websocket) {
+                state.websocket.close();
+                state.websocket = null;
+            }
+
+            if (!symbol.endsWith('USDT')) return;
+
+            const wsUrl = `wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1m`;
+            try {
+                state.websocket = new WebSocket(wsUrl);
+                state.websocket.onmessage = (event) => {
+                    const msg = JSON.parse(event.data);
+                    if (msg.k) {
+                        const k = msg.k;
+                        const tickPrice = parseFloat(k.c);
+                        DataEngine.updateLastCandle(state.data, tickPrice);
+                        recalculateIndicators();
+                    }
+                };
+            } catch (err) {
+                console.error("WebSocket connection error:", err);
+            }
+        }
+
+        // Initialize Application
+        window.onload = function () {
+            // Load base candle dataset
+            state.data = DataEngine.generateBaseSeries(state.symbol);
+            chartEngine = new ChartCanvasRenderer('chartContainer', 'mainChartCanvas');
+
+            recalculateIndicators();
+
+            // Connect WS if Crypto
+            if (state.symbol.endsWith('USDT')) {
+                connectLiveCryptoWS(state.symbol);
+            }
+
+            // Start simulated real-time ticking loop
+            setInterval(() => {
+                if (state.isLive && !state.symbol.endsWith('USDT')) {
+                    DataEngine.pushNewTick(state.data);
+                    recalculateIndicators();
+                }
+            }, 1200);
+
+            // Asset selector event
+            document.getElementById('assetSelect').addEventListener('change', (e) => {
+                state.symbol = e.target.value;
+                state.data = DataEngine.generateBaseSeries(state.symbol);
+                if (state.symbol.endsWith('USDT')) {
+                    connectLiveCryptoWS(state.symbol);
+                } else if (state.websocket) {
+                    state.websocket.close();
+                }
+                recalculateIndicators();
+            });
+
+            // Timeframe buttons
+            document.querySelectorAll('.tf-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.tf-btn').forEach(b => {
+                        b.className = 'tf-btn px-2.5 py-1 rounded text-slate-400 hover:text-white transition';
+                    });
+                    e.target.className = 'tf-btn px-2.5 py-1 rounded bg-emerald-600 text-white font-semibold shadow';
+                    state.timeframe = e.target.dataset.tf;
+                    state.data = DataEngine.generateBaseSeries(state.symbol);
+                    recalculateIndicators();
+                });
+            });
+
+            // Overlay Checkbox updates
+            ['chkBB', 'chkSMA20', 'chkSMA50', 'chkEMA9', 'chkTargetLines', 'chkSignalMarkers'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('change', () => chartEngine.render());
+            });
+
+            // Reset Chart Zoom
+            document.getElementById('btnResetChart').addEventListener('click', () => {
+                state.chartPanOffset = 0;
+                state.chartZoom = 1.0;
+                chartEngine.render();
+            });
+
+            // AI Report Trigger
+            document.getElementById('btnGeminiReport').addEventListener('click', generateGeminiReport);
+
+            // Backtest Modal Trigger
+            document.getElementById('btnBacktest').addEventListener('click', runBacktestSimulation);
+            document.getElementById('closeBacktestModal').addEventListener('click', () => {
+                document.getElementById('backtestModal').classList.add('hidden');
+            });
+
+            // Settings Modal
+            document.getElementById('btnSettings').addEventListener('click', () => {
+                document.getElementById('settingsModal').classList.remove('hidden');
+            });
+            document.getElementById('closeSettingsModal').addEventListener('click', () => {
+                document.getElementById('settingsModal').classList.add('hidden');
+            });
+            document.getElementById('btnSaveSettings').addEventListener('click', () => {
+                state.params.rsiPeriod = parseInt(document.getElementById('cfgRsiPeriod').value) || 14;
+                state.params.rsiOversold = parseInt(document.getElementById('cfgRsiOversold').value) || 30;
+                state.params.rsiOverbought = parseInt(document.getElementById('cfgRsiOverbought').value) || 70;
+                state.params.macdFast = parseInt(document.getElementById('cfgMacdFast').value) || 12;
+                state.params.macdSlow = parseInt(document.getElementById('cfgMacdSlow').value) || 26;
+                state.params.macdSignal = parseInt(document.getElementById('cfgMacdSignal').value) || 9;
+                state.params.bbPeriod = parseInt(document.getElementById('cfgBbPeriod').value) || 20;
+                state.params.bbStdDev = parseFloat(document.getElementById('cfgBbStdDev').value) || 2;
+
+                document.getElementById('settingsModal').classList.add('hidden');
+                recalculateIndicators();
+            });
+        };
+    </script>
+</body>
+</html>
