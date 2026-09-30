@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 현황 대시보드 (Live Dashboard)</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            500: '#0284c7',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- PapaParse for parsing CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        .pulse-ring {
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+            animation: pulse-animation 1.8s infinite;
+        }
+
+        @keyframes pulse-animation {
+            0% {
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 8px rgba(34, 197, 94, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+            }
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .light .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.5);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.8);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen transition-colors duration-300">
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Top Header Navigation -->
+        <header class="glass-card rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-3 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
+                    <i data-lucide="activity" class="w-7 h-7"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                        실시간 현황 대시보드
+                        <span id="statusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-ring"></span>
+                            라이브
+                        </span>
+                    </h1>
+                    <p class="text-xs text-slate-400 mt-0.5" id="dataUrlDisplay">구글 스프레드시트 데이터 연동 중</p>
+                </div>
+            </div>
+
+            <!-- Controls and Refresh Timer -->
+            <div class="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+                <!-- Unit Quick Filter Selector -->
+                <div class="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+                    <i data-lucide="cpu" class="w-4 h-4 text-blue-400"></i>
+                    <span class="text-slate-400 font-medium">호기:</span>
+                    <select id="unitFilterSelectHeader" onchange="handleUnitFilterChange(event)" class="bg-transparent text-slate-200 font-semibold focus:outline-none cursor-pointer">
+                        <option value="ALL">전체 호기</option>
+                    </select>
+                </div>
+
+                <!-- Countdown Display -->
+                <div class="flex items-center gap-2 bg-slate-900/80 px-3.5 py-2 rounded-xl border border-slate-800 text-sm">
+                    <i data-lucide="clock" class="w-4 h-4 text-blue-400"></i>
+                    <span class="text-slate-400 text-xs">다음 갱신:</span>
+                    <span id="timerText" class="font-mono font-bold text-blue-400 w-7 text-center">30초</span>
+                </div>
+
+                <!-- Interval Selector -->
+                <select id="intervalSelect" class="bg-slate-900/80 text-xs text-slate-300 border border-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500">
+                    <option value="10">10초마다</option>
+                    <option value="30" selected>30초마다</option>
+                    <option value="60">1분마다</option>
+                    <option value="0">자동 갱신 일시정지</option>
+                </select>
+
+                <!-- Refresh Button -->
+                <button id="refreshBtn" onclick="manualRefresh()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium px-4 py-2 rounded-xl text-sm transition shadow-lg shadow-blue-600/20">
+                    <i data-lucide="refresh-cw" id="refreshIcon" class="w-4 h-4"></i>
+                    <span>지금 갱신</span>
+                </button>
+
+                <!-- Settings Toggle Button -->
+                <button onclick="toggleSettingsModal()" class="p-2 bg-slate-900/80 hover:bg-slate-800 text-slate-300 rounded-xl border border-slate-800 transition" title="설정">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </header>
+
+        <section id="unitChipsBar" class="glass-card rounded-2xl p-3.5 flex items-center gap-3 overflow-x-auto text-xs scrollbar-thin">
+            <div class="flex items-center gap-2 shrink-0 font-semibold text-blue-400 border-r border-slate-800 pr-3">
+                <i data-lucide="cpu" class="w-4 h-4"></i>
+                <span>호기별 조회</span>
+                <span class="unit-col-label text-[10px] text-slate-400 font-normal"></span>
+            </div>
+            <div id="unitChipsContainer" class="flex items-center gap-2 shrink-0">
+                <!-- Dynamic Unit Chips -->
+                <span class="text-slate-500 text-xs">호기 데이터 분석 중...</span>
+            </div>
+        </section>
+
+        <!-- KPI Metrics Grid -->
+        <section id="kpiSection" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Skeleton Loading Placeholders -->
+            <div class="glass-card p-5 rounded-2xl animate-pulse h-28 flex flex-col justify-between">
+                <div class="h-4 bg-slate-800 rounded w-1/2"></div>
+                <div class="h-8 bg-slate-800 rounded w-3/4"></div>
+            </div>
+            <div class="glass-card p-5 rounded-2xl animate-pulse h-28 flex flex-col justify-between">
+                <div class="h-4 bg-slate-800 rounded w-1/2"></div>
+                <div class="h-8 bg-slate-800 rounded w-3/4"></div>
+            </div>
+            <div class="glass-card p-5 rounded-2xl animate-pulse h-28 flex flex-col justify-between">
+                <div class="h-4 bg-slate-800 rounded w-1/2"></div>
+                <div class="h-8 bg-slate-800 rounded w-3/4"></div>
+            </div>
+            <div class="glass-card p-5 rounded-2xl animate-pulse h-28 flex flex-col justify-between">
+                <div class="h-4 bg-slate-800 rounded w-1/2"></div>
+                <div class="h-8 bg-slate-800 rounded w-3/4"></div>
+            </div>
+        </section>
+
+        <!-- Charts Grid Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Main Chart Card 1 -->
+            <div class="glass-card p-5 rounded-2xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h2 id="chartTitle1" class="font-semibold text-slate-200 flex items-center gap-2 text-sm sm:text-base">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4 text-blue-400"></i>
+                        카테고리별 데이터 현황
+                    </h2>
+                    <span id="chartTag1" class="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded-lg">자동 감지</span>
+                </div>
+                <div class="h-64 sm:h-72 relative flex items-center justify-center">
+                    <canvas id="chartCanvas1"></canvas>
+                </div>
+            </div>
+
+            <!-- Main Chart Card 2 -->
+            <div class="glass-card p-5 rounded-2xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h2 id="chartTitle2" class="font-semibold text-slate-200 flex items-center gap-2 text-sm sm:text-base">
+                        <i data-lucide="pie-chart" class="w-4 h-4 text-emerald-400"></i>
+                        비율 분석
+                    </h2>
+                    <span id="chartTag2" class="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded-lg">분포</span>
+                </div>
+                <div class="h-64 sm:h-72 relative flex items-center justify-center">
+                    <canvas id="chartCanvas2"></canvas>
+                </div>
+            </div>
+
+            <!-- Main Chart Card 3 (Full Width if timeline available) -->
+            <div class="glass-card p-5 rounded-2xl space-y-4 lg:col-span-2">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h2 id="chartTitle3" class="font-semibold text-slate-200 flex items-center gap-2 text-sm sm:text-base">
+                        <i data-lucide="trending-up" class="w-4 h-4 text-purple-400"></i>
+                        추이 및 상세 메트릭 비교
+                    </h2>
+                    <span id="chartTag3" class="text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded-lg">시계열 / 라인</span>
+                </div>
+                <div class="h-64 sm:h-80 relative flex items-center justify-center">
+                    <canvas id="chartCanvas3"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Data Table Section -->
+        <section class="glass-card rounded-2xl p-5 space-y-4">
+            <!-- Table Header Controls -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                <div>
+                    <h2 class="font-semibold text-slate-200 flex items-center gap-2">
+                        <i data-lucide="database" class="w-5 h-5 text-indigo-400"></i>
+                        실시간 상세 데이터 목록
+                        <span id="totalRowCount" class="text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full font-mono">0 건</span>
+                        <span id="selectedUnitBadge" class="hidden text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full font-medium"></span>
+                    </h2>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- Unit Table Dropdown Filter -->
+                    <div class="relative min-w-[130px]">
+                        <select id="unitFilterSelect" onchange="handleUnitFilterChange(event)" class="w-full bg-slate-900/90 text-xs text-slate-200 pl-3 pr-8 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500 transition appearance-none">
+                            <option value="ALL">전체 호기 필터</option>
+                        </select>
+                        <i data-lucide="chevron-down" class="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+                    </div>
+
+                    <!-- Global Search Box -->
+                    <div class="relative flex-1 sm:w-64">
+                        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="text" id="searchInput" oninput="handleSearch()" placeholder="검색어 입력..." 
+                               class="w-full bg-slate-900/90 text-sm text-slate-200 pl-9 pr-4 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500 transition">
+                    </div>
+
+                    <!-- Export CSV Button -->
+                    <button onclick="exportCSV()" class="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 px-3 py-2 rounded-xl border border-slate-800 text-xs font-medium transition">
+                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                        내보내기
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="overflow-x-auto rounded-xl border border-slate-800/80">
+                <table class="w-full text-left text-sm text-slate-300">
+                    <thead class="bg-slate-900/90 text-xs uppercase text-slate-400 font-semibold border-b border-slate-800" id="tableHeader">
+                        <tr>
+                            <th class="p-4">데이터 로딩 중...</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 bg-slate-950/40" id="tableBody">
+                        <tr>
+                            <td class="p-8 text-center text-slate-500">
+                                <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>
+                                데이터를 불러오는 중입니다...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Table Pagination & Footer -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 text-xs text-slate-400">
+                <div id="paginationInfo">
+                    페이지 1 / 1 (전체 0건)
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="prevBtn" onclick="changePage(-1)" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900 text-slate-300 rounded-lg border border-slate-800 transition">
+                        이전
+                    </button>
+                    <span id="pageNumbers" class="px-2 font-mono">1</span>
+                    <button id="nextBtn" onclick="changePage(1)" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900 text-slate-300 rounded-lg border border-slate-800 transition">
+                        다음
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dynamic Status Footer Bar -->
+        <footer class="flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-800/50 gap-2">
+            <div class="flex items-center gap-2">
+                <span>마지막 동기화 시각:</span>
+                <span id="lastUpdatedTime" class="font-mono text-slate-400">-</span>
+            </div>
+            <div class="flex items-center gap-1 text-slate-600">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                <span>자동 무중단 동기화 활성화됨</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-card max-w-lg w-full rounded-2xl p-6 space-y-5 border border-slate-700 shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-lg font-bold text-slate-100 flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-5 h-5 text-blue-400"></i>
+                    대시보드 소스 설정
+                </h3>
+                <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-slate-200">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3">
+                <label class="block text-xs font-medium text-slate-300">Google Sheets CSV 게시 URL</label>
+                <textarea id="csvUrlInput" rows="3" class="w-full bg-slate-900 text-xs font-mono text-slate-200 p-3 rounded-xl border border-slate-800 focus:outline-none focus:border-blue-500 transition resize-none"></textarea>
+                <p class="text-[11px] text-slate-400">
+                    * 구글 스프레드시트의 <code class="bg-slate-800 px-1 py-0.5 rounded text-blue-300">파일 > 공유 > 웹에 게시 > CSV</code> 형식 주소를 지원합니다.
+                </p>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button onclick="toggleSettingsModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl transition">
+                    취소
+                </button>
+                <button onclick="applyUrlSettings()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-xl transition shadow-lg shadow-blue-600/20">
+                    주소 저장 및 불러오기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global Application State
+        const DEFAULT_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQfjgsij61fCPtq3a5WtJlJi8JIb6XXwmxSj-mM_eFP6r_lCog_Tcr6eEjLgXKdasyh5LUEGyCrw_8Y/pub?output=csv';
+        
+        let state = {
+            csvUrl: DEFAULT_CSV_URL,
+            rawData: [],
+            filteredData: [],
+            columns: [],
+            columnTypes: {}, // { colName: 'numeric' | 'categorical' | 'date' | 'text' }
+            refreshIntervalSec: 30,
+            countdownSec: 30,
+            timerId: null,
+            countdownId: null,
+            currentPage: 1,
+            pageSize: 10,
+            sortColumn: null,
+            sortAsc: true,
+            searchQuery: '',
+            selectedUnit: 'ALL',
+            unitColumn: null,
+            isLoading: false
+        };
+
+        // Chart.js Instances
+        let chart1 = null;
+        let chart2 = null;
+        let chart3 = null;
+
+        // Initialize Icons
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            document.getElementById('csvUrlInput').value = state.csvUrl;
+            initDashboard();
+        });
+
+        async function initDashboard() {
+            startCountdownTimer();
+            await fetchData();
+        }
+
+        async function fetchData() {
+            if (state.isLoading) return;
+            state.isLoading = true;
+
+            const refreshIcon = document.getElementById('refreshIcon');
+            if (refreshIcon) refreshIcon.classList.add('animate-spin');
+
+            updateStatusBadge('updating', '갱신 중...');
+
+            try {
+                // Add timestamp query param to bypass browser HTTP cache on Google Sheets CSV
+                const cacheBusterUrl = state.csvUrl + (state.csvUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+                
+                const response = await fetch(cacheBusterUrl, { cache: 'no-cache' });
+                if (!response.ok) {
+                    throw new Error(`HTTP 오류: ${response.status}`);
+                }
+
+                const csvText = await response.text();
+
+                // Parse CSV using PapaParse
+                Papa.parse(csvText, {
+                    header: true,
+                    skipEmptyLines: true,
+                    dynamicTyping: true,
+                    complete: function(results) {
+                        if (results.data && results.data.length > 0) {
+                            processData(results.data);
+                            updateStatusBadge('live', '라이브');
+                        } else {
+                            handleFetchError('CSV 데이터가 비어있습니다.');
+                        }
+                    },
+                    error: function(err) {
+                        handleFetchError('CSV 파싱 오류: ' + err.message);
+                    }
+                });
+
+            } catch (err) {
+                console.error("데이터 수신 오류:", err);
+                handleFetchError('데이터 수신 실패. 네트워크 상태를 확인하세요.');
+            } finally {
+                state.isLoading = false;
+                if (refreshIcon) refreshIcon.classList.remove('animate-spin');
+                document.getElementById('lastUpdatedTime').innerText = new Date().toLocaleTimeString('ko-KR');
+                state.countdownSec = state.refreshIntervalSec;
+            }
+        }
+
+        function handleFetchError(message) {
+            updateStatusBadge('offline', '오류 발생');
+            console.warn(message);
+        }
+
+        function processData(data) {
+            state.rawData = data;
+            
+            // Extract Column Headers
+            if (data.length > 0) {
+                state.columns = Object.keys(data[0]);
+            }
+
+            // Analyze Column Data Types
+            analyzeColumnTypes(data, state.columns);
+
+            // Auto-detect unit/machine column
+            detectUnitColumn();
+
+            // Populate unit selectors and chips
+            populateUnitSelectors();
+            renderUnitChips();
+
+            // Filter & Search
+            applyFilterAndSearch();
+
+            // Render Dashboard UI Elements
+            renderKPIs();
+            renderCharts();
+            renderTable();
+
+            // Re-bind Lucide icons for dynamic elements
+            lucide.createIcons();
+        }
+
+        function detectUnitColumn() {
+            const keywords = ['호기', 'unit', 'machine', '설비', '라인', 'equipment', 'device', '호'];
+            for (const col of state.columns) {
+                const lower = col.toLowerCase();
+                if (keywords.some(kw => lower.includes(kw))) {
+                    state.unitColumn = col;
+                    return;
+                }
+            }
+            // Fallback to first categorical column if no specific unit keyword found
+            const categoricalCols = Object.keys(state.columnTypes).filter(c => state.columnTypes[c] === 'categorical');
+            state.unitColumn = categoricalCols[0] || state.columns[0] || null;
+        }
+
+        function populateUnitSelectors() {
+            if (!state.unitColumn) return;
+
+            const dropdownHeader = document.getElementById('unitFilterSelectHeader');
+            const dropdownTable = document.getElementById('unitFilterSelect');
+
+            const uniqueUnits = Array.from(new Set(state.rawData.map(r => r[state.unitColumn])))
+                .filter(val => val !== null && val !== undefined && val !== '')
+                .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+
+            [dropdownHeader, dropdownTable].forEach(selectEl => {
+                if (!selectEl) return;
+                const currentVal = state.selectedUnit;
+                selectEl.innerHTML = `<option value="ALL">전체 호기 (${uniqueUnits.length}개)</option>`;
+                
+                uniqueUnits.forEach(unit => {
+                    const opt = document.createElement('option');
+                    opt.value = String(unit);
+                    opt.textContent = `${unit}`;
+                    if (String(unit) === String(currentVal)) {
+                        opt.selected = true;
+                    }
+                    selectEl.appendChild(opt);
+                });
+            });
+
+            // Update column name label badge
+            document.querySelectorAll('.unit-col-label').forEach(el => {
+                el.innerText = state.unitColumn ? `[${state.unitColumn}]` : '';
+            });
+        }
+
+        function renderUnitChips() {
+            const container = document.getElementById('unitChipsContainer');
+            if (!container || !state.unitColumn) return;
+
+            const uniqueUnits = Array.from(new Set(state.rawData.map(r => r[state.unitColumn])))
+                .filter(val => val !== null && val !== undefined && val !== '')
+                .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+
+            let html = `
+                <button onclick="selectUnit('ALL')" class="px-3 py-1.5 rounded-xl font-medium transition flex items-center gap-1.5 ${state.selectedUnit === 'ALL' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800'}">
+                    <span>전체</span>
+                    <span class="text-[10px] opacity-70 bg-black/20 px-1.5 py-0.5 rounded-full font-mono">${state.rawData.length}</span>
+                </button>
+            `;
+
+            uniqueUnits.forEach(unit => {
+                const isSelected = String(state.selectedUnit) === String(unit);
+                const count = state.rawData.filter(r => String(r[state.unitColumn]) === String(unit)).length;
+                
+                html += `
+                    <button onclick="selectUnit('${unit}')" class="px-3 py-1.5 rounded-xl font-medium transition flex items-center gap-1.5 ${isSelected ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800'}">
+                        <span>${unit}</span>
+                        <span class="text-[10px] opacity-80 ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'} px-1.5 py-0.5 rounded-full font-mono">${count}</span>
+                    </button>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function selectUnit(unitVal) {
+            state.selectedUnit = unitVal;
+            
+            const dropdownHeader = document.getElementById('unitFilterSelectHeader');
+            const dropdownTable = document.getElementById('unitFilterSelect');
+            if (dropdownHeader) dropdownHeader.value = unitVal;
+            if (dropdownTable) dropdownTable.value = unitVal;
+
+            // Update Table badge indicator
+            const unitBadge = document.getElementById('selectedUnitBadge');
+            if (unitBadge) {
+                if (unitVal !== 'ALL') {
+                    unitBadge.classList.remove('hidden');
+                    unitBadge.innerText = `${unitVal} 선택됨`;
+                } else {
+                    unitBadge.classList.add('hidden');
+                }
+            }
+
+            applyFilterAndSearch();
+            renderUnitChips();
+            renderKPIs();
+            renderCharts();
+            renderTable();
+        }
+
+        function handleUnitFilterChange(e) {
+            selectUnit(e.target.value);
+        }
+
+        function applyFilterAndSearch() {
+            let data = [...state.rawData];
+
+            // Filter by selected 호기 (Unit)
+            if (state.selectedUnit && state.selectedUnit !== 'ALL' && state.unitColumn) {
+                data = data.filter(row => String(row[state.unitColumn]) === String(state.selectedUnit));
+            }
+
+            // Search Query
+            if (state.searchQuery.trim() !== '') {
+                const q = state.searchQuery.toLowerCase();
+                data = data.filter(row => {
+                    return state.columns.some(col => String(row[col] || '').toLowerCase().includes(q));
+                });
+            }
+
+            // Sorting
+            if (state.sortColumn) {
+                data.sort((a, b) => {
+                    let valA = a[state.sortColumn];
+                    let valB = b[state.sortColumn];
+
+                    if (valA === valB) return 0;
+                    if (valA === null || valA === undefined) return 1;
+                    if (valB === null || valB === undefined) return -1;
+
+                    if (typeof valA === 'number' && typeof valB === 'number') {
+                        return state.sortAsc ? valA - valB : valB - valA;
+                    }
+
+                    return state.sortAsc 
+                        ? String(valA).localeCompare(String(valB))
+                        : String(valB).localeCompare(String(valA));
+                });
+            }
+
+            state.filteredData = data;
+            state.currentPage = 1;
+        }
+
+        function analyzeColumnTypes(data, columns) {
+            state.columnTypes = {};
+
+            columns.forEach(col => {
+                let numericCount = 0;
+                let dateCount = 0;
+                let validCount = 0;
+                let uniqueValues = new Set();
+
+                // Sample up to 100 rows for performance
+                const sampleRows = data.slice(0, 100);
+
+                sampleRows.forEach(row => {
+                    const val = row[col];
+                    if (val !== null && val !== undefined && val !== '') {
+                        validCount++;
+                        uniqueValues.add(String(val).trim());
+
+                        // Test numeric
+                        if (typeof val === 'number' || (!isNaN(Number(val)) && typeof val !== 'boolean')) {
+                            numericCount++;
+                        }
+
+                        // Test Date
+                        if (typeof val === 'string' && val.length >= 6 && !isNaN(Date.parse(val)) && isNaN(Number(val))) {
+                            dateCount++;
+                        }
+                    }
+                });
+
+                if (numericCount / validCount > 0.7) {
+                    state.columnTypes[col] = 'numeric';
+                } else if (dateCount / validCount > 0.5) {
+                    state.columnTypes[col] = 'date';
+                } else if (uniqueValues.size <= 15 && validCount > 0) {
+                    state.columnTypes[col] = 'categorical';
+                } else {
+                    state.columnTypes[col] = 'text';
+                }
+            });
+        }
+
+        function renderKPIs() {
+            const kpiSection = document.getElementById('kpiSection');
+            if (!kpiSection) return;
+
+            // Use filteredData for current scope (Selected unit)
+            const activeData = state.filteredData;
+            const totalRows = activeData.length;
+            const numericCols = Object.keys(state.columnTypes).filter(c => state.columnTypes[c] === 'numeric');
+            const categoricalCols = Object.keys(state.columnTypes).filter(c => state.columnTypes[c] === 'categorical' && c !== state.unitColumn);
+
+            const unitLabel = state.selectedUnit !== 'ALL' ? `(${state.selectedUnit})` : '(전체 호기)';
+
+            let kpiCardsHTML = '';
+
+            // Card 1: Total Records
+            kpiCardsHTML += `
+                <div class="glass-card p-5 rounded-2xl space-y-2 border-l-4 border-blue-500">
+                    <div class="flex items-center justify-between text-xs text-slate-400 font-medium">
+                        <span>현재 데이터 건수 ${unitLabel}</span>
+                        <i data-lucide="layers" class="w-4 h-4 text-blue-400"></i>
+                    </div>
+                    <div class="text-2xl sm:text-3xl font-extrabold font-mono text-white">
+                        ${totalRows.toLocaleString()} <span class="text-xs text-slate-400 font-sans font-normal">건</span>
+                    </div>
+                    <div class="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
+                        <i data-lucide="check-circle" class="w-3 h-3"></i> ${state.selectedUnit !== 'ALL' ? state.selectedUnit + ' 수집 중' : '전체 라이브 연결됨'}
+                    </div>
+                </div>
+            `;
+
+            // Card 2: Numeric Summary (Primary Numeric Metric)
+            if (numericCols.length > 0) {
+                const colName = numericCols[0];
+                const sum = activeData.reduce((acc, curr) => acc + (Number(curr[colName]) || 0), 0);
+                const avg = totalRows > 0 ? (sum / totalRows).toFixed(1) : 0;
+
+                kpiCardsHTML += `
+                    <div class="glass-card p-5 rounded-2xl space-y-2 border-l-4 border-emerald-500">
+                        <div class="flex items-center justify-between text-xs text-slate-400 font-medium">
+                            <span class="truncate max-w-[150px]">${colName} (합계 / 평균)</span>
+                            <i data-lucide="calculator" class="w-4 h-4 text-emerald-400"></i>
+                        </div>
+                        <div class="text-2xl sm:text-3xl font-extrabold font-mono text-white truncate">
+                            ${sum.toLocaleString()}
+                        </div>
+                        <div class="text-[11px] text-slate-400 flex items-center justify-between">
+                            <span>평균: <strong class="text-emerald-400">${Number(avg).toLocaleString()}</strong></span>
+                            <span>${unitLabel}</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                kpiCardsHTML += createGenericKPICard('조회 항목 수', state.columns.length + ' 개 컬럼', 'columns', 'text-emerald-400');
+            }
+
+            // Card 3: Categorical Breakdown or Machine Status
+            if (categoricalCols.length > 0) {
+                const colName = categoricalCols[0];
+                const counts = {};
+                activeData.forEach(r => {
+                    const val = r[colName] || 'N/A';
+                    counts[val] = (counts[val] || 0) + 1;
+                });
+                const topCategory = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b, 'N/A');
+
+                kpiCardsHTML += `
+                    <div class="glass-card p-5 rounded-2xl space-y-2 border-l-4 border-purple-500">
+                        <div class="flex items-center justify-between text-xs text-slate-400 font-medium">
+                            <span class="truncate max-w-[150px]">${colName} (최다)</span>
+                            <i data-lucide="tag" class="w-4 h-4 text-purple-400"></i>
+                        </div>
+                        <div class="text-xl sm:text-2xl font-bold text-white truncate">
+                            ${topCategory}
+                        </div>
+                        <div class="text-[11px] text-slate-400 flex items-center justify-between">
+                            <span>점유: <strong class="text-purple-400">${counts[topCategory] || 0}건 (${totalRows > 0 ? ((counts[topCategory]||0)/totalRows*100).toFixed(0) : 0}%)</strong></span>
+                            <span>범주 구분</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                kpiCardsHTML += createGenericKPICard('동기화 상태', '30초 주기 라이브', 'clock', 'text-purple-400');
+            }
+
+            // Card 4: Unit count or status
+            const uniqueUnits = new Set(state.rawData.map(r => r[state.unitColumn])).size;
+            kpiCardsHTML += `
+                <div class="glass-card p-5 rounded-2xl space-y-2 border-l-4 border-amber-500">
+                    <div class="flex items-center justify-between text-xs text-slate-400 font-medium">
+                        <span>전체 호기 구성</span>
+                        <i data-lucide="cpu" class="w-4 h-4 text-amber-400"></i>
+                    </div>
+                    <div class="text-2xl sm:text-3xl font-extrabold font-mono text-amber-400">
+                        총 ${uniqueUnits} 개 호기
+                    </div>
+                    <div class="text-[11px] text-slate-400">
+                        ${state.selectedUnit === 'ALL' ? '전체 호기 통합 보기 중' : state.selectedUnit + ' 선택 보기 중'}
+                    </div>
+                </div>
+            `;
+
+            kpiSection.innerHTML = kpiCardsHTML;
+        }
+
+        function createGenericKPICard(title, value, icon, colorClass) {
+            return `
+                <div class="glass-card p-5 rounded-2xl space-y-2 border-l-4 border-slate-700">
+                    <div class="flex items-center justify-between text-xs text-slate-400 font-medium">
+                        <span class="truncate">${title}</span>
+                        <i data-lucide="${icon}" class="w-4 h-4 ${colorClass}"></i>
+                    </div>
+                    <div class="text-2xl sm:text-3xl font-extrabold font-mono text-white truncate">
+                        ${value}
+                    </div>
+                    <div class="text-[11px] text-slate-400">
+                        자동 집계 항목
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCharts() {
+            if (state.filteredData.length === 0) return;
+
+            const activeData = state.filteredData;
+            const categoricalCols = Object.keys(state.columnTypes).filter(c => state.columnTypes[c] === 'categorical');
+            const numericCols = Object.keys(state.columnTypes).filter(c => state.columnTypes[c] === 'numeric');
+            const dateCols = Object.keys(state.columnTypes).filter(c => state.columnTypes[c] === 'date');
+
+            // Chart Colors Theme
+            const colors = [
+                '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', 
+                '#ec4899', '#06b6d4', '#6366f1', '#84cc16'
+            ];
+
+            // ------------------------------------
+            // CHART 1: Category / Unit Bar Chart
+            // ------------------------------------
+            const ctx1 = document.getElementById('chartCanvas1').getContext('2d');
+            if (chart1) chart1.destroy();
+
+            // If ALL is selected, show distribution by unitColumn; otherwise primary categorical column
+            const primaryCat = (state.selectedUnit === 'ALL' && state.unitColumn) 
+                ? state.unitColumn 
+                : (categoricalCols.find(c => c !== state.unitColumn) || state.columns[0]);
+
+            document.getElementById('chartTitle1').innerText = `[${primaryCat}] 별 분포 현황`;
+
+            const catCounts1 = {};
+            activeData.forEach(r => {
+                const val = String(r[primaryCat] || '기타');
+                catCounts1[val] = (catCounts1[val] || 0) + 1;
+            });
+
+            chart1 = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(catCounts1),
+                    datasets: [{
+                        label: '건수',
+                        data: Object.values(catCounts1),
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 8,
+                        hoverBackgroundColor: '#60a5fa'
+                    }]
+                },
+                options: getChartOptions()
+            });
+
+            // ------------------------------------
+            // CHART 2: Doughnut Distribution
+            // ------------------------------------
+            const ctx2 = document.getElementById('chartCanvas2').getContext('2d');
+            if (chart2) chart2.destroy();
+
+            const secondaryCat = categoricalCols.find(c => c !== primaryCat) || state.columns[1] || primaryCat;
+            document.getElementById('chartTitle2').innerText = `[${secondaryCat}] 점유 비율`;
+
+            const catCounts2 = {};
+            activeData.forEach(r => {
+                const val = String(r[secondaryCat] || '기타');
+                catCounts2[val] = (catCounts2[val] || 0) + 1;
+            });
+
+            chart2 = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(catCounts2),
+                    datasets: [{
+                        data: Object.values(catCounts2),
+                        backgroundColor: colors,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#94a3b8', font: { family: 'Inter', size: 11 } }
+                        }
+                    }
+                }
+            });
+
+            // ------------------------------------
+            // CHART 3: Line / Trend Chart
+            // ------------------------------------
+            const ctx3 = document.getElementById('chartCanvas3').getContext('2d');
+            if (chart3) chart3.destroy();
+
+            if (numericCols.length > 0) {
+                const numCol = numericCols[0];
+                document.getElementById('chartTitle3').innerText = `[${numCol}] 수치 변화 및 추이 ${state.selectedUnit !== 'ALL' ? '(' + state.selectedUnit + ')' : ''}`;
+
+                const labels = activeData.slice(0, 30).map((r, i) => {
+                    if (dateCols.length > 0 && r[dateCols[0]]) return String(r[dateCols[0]]);
+                    if (primaryCat && r[primaryCat]) return String(r[primaryCat]);
+                    return `#${i + 1}`;
+                });
+
+                const values = activeData.slice(0, 30).map(r => Number(r[numCol]) || 0);
+
+                chart3 = new Chart(ctx3, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: numCol,
+                            data: values,
+                            borderColor: '#8b5cf6',
+                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointBackgroundColor: '#c084fc',
+                            pointRadius: 4
+                        }]
+                    },
+                    options: getChartOptions()
+                });
+            } else {
+                document.getElementById('chartTitle3').innerText = '데이터 시퀀스 흐름';
+                chart3 = new Chart(ctx3, {
+                    type: 'line',
+                    data: {
+                        labels: activeData.slice(0, 20).map((_, i) => `#${i + 1}`),
+                        datasets: [{
+                            label: '시퀀스',
+                            data: activeData.slice(0, 20).map((_, i) => i + 1),
+                            borderColor: '#10b981',
+                            fill: false,
+                            tension: 0.2
+                        }]
+                    },
+                    options: getChartOptions()
+                });
+            }
+        }
+
+        function getChartOptions() {
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#94a3b8', font: { family: 'Inter', size: 12 } }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#64748b', font: { size: 11 } },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                    },
+                    y: {
+                        ticks: { color: '#64748b', font: { size: 11 } },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                    }
+                }
+            };
+        }
+
+        function renderTable() {
+            const headerEl = document.getElementById('tableHeader');
+            const bodyEl = document.getElementById('tableBody');
+            const totalCountEl = document.getElementById('totalRowCount');
+
+            if (state.columns.length === 0) {
+                bodyEl.innerHTML = `<tr><td class="p-8 text-center text-slate-500">표시할 데이터가 없습니다.</td></tr>`;
+                return;
+            }
+
+            totalCountEl.innerText = `${state.filteredData.length.toLocaleString()} 건`;
+
+            // Render Table Headers
+            let headerHTML = '<tr>';
+            state.columns.forEach(col => {
+                const isSorted = state.sortColumn === col;
+                const sortIcon = isSorted ? (state.sortAsc ? '▲' : '▼') : '';
+                headerHTML += `
+                    <th onclick="sortTable('${col}')" class="p-3.5 cursor-pointer hover:bg-slate-800/80 transition select-none">
+                        <div class="flex items-center gap-1">
+                            <span>${col}</span>
+                            <span class="text-blue-400 font-mono text-[10px]">${sortIcon}</span>
+                        </div>
+                    </th>
+                `;
+            });
+            headerHTML += '</tr>';
+            headerEl.innerHTML = headerHTML;
+
+            // Pagination calculation
+            const startIndex = (state.currentPage - 1) * state.pageSize;
+            const endIndex = startIndex + state.pageSize;
+            const pageData = state.filteredData.slice(startIndex, endIndex);
+
+            if (pageData.length === 0) {
+                bodyEl.innerHTML = `<tr><td colspan="${state.columns.length}" class="p-8 text-center text-slate-500">검색 결과가 없습니다.</td></tr>`;
+                return;
+            }
+
+            // Render Table Rows
+            let bodyHTML = '';
+            pageData.forEach((row) => {
+                bodyHTML += '<tr class="hover:bg-slate-900/60 transition duration-150">';
+                state.columns.forEach(col => {
+                    const val = row[col] !== undefined && row[col] !== null ? row[col] : '';
+                    
+                    // Format special dynamic status badges if applicable
+                    let cellContent = String(val);
+                    const lowerVal = cellContent.toLowerCase();
+
+                    if (['완료', 'success', 'pass', '정상', 'active', '완료됨'].includes(lowerVal)) {
+                        cellContent = `<span class="px-2 py-0.5 text-[11px] rounded-full font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">${val}</span>`;
+                    } else if (['진행중', 'pending', 'processing', '대기'].includes(lowerVal)) {
+                        cellContent = `<span class="px-2 py-0.5 text-[11px] rounded-full font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">${val}</span>`;
+                    } else if (['오류', 'error', 'fail', '지연', 'failed'].includes(lowerVal)) {
+                        cellContent = `<span class="px-2 py-0.5 text-[11px] rounded-full font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">${val}</span>`;
+                    }
+
+                    bodyHTML += `<td class="p-3.5 whitespace-nowrap text-xs text-slate-300 border-t border-slate-800/40">${cellContent}</td>`;
+                });
+                bodyHTML += '</tr>';
+            });
+
+            bodyEl.innerHTML = bodyHTML;
+            updatePaginationControls();
+        }
+
+        function applyFilterAndSearch() {
+            let data = [...state.rawData];
+
+            // Search Query
+            if (state.searchQuery.trim() !== '') {
+                const q = state.searchQuery.toLowerCase();
+                data = data.filter(row => {
+                    return state.columns.some(col => String(row[col] || '').toLowerCase().includes(q));
+                });
+            }
+
+            // Sorting
+            if (state.sortColumn) {
+                data.sort((a, b) => {
+                    let valA = a[state.sortColumn];
+                    let valB = b[state.sortColumn];
+
+                    if (valA === valB) return 0;
+                    if (valA === null || valA === undefined) return 1;
+                    if (valB === null || valB === undefined) return -1;
+
+                    if (typeof valA === 'number' && typeof valB === 'number') {
+                        return state.sortAsc ? valA - valB : valB - valA;
+                    }
+
+                    return state.sortAsc 
+                        ? String(valA).localeCompare(String(valB))
+                        : String(valB).localeCompare(String(valA));
+                });
+            }
+
+            state.filteredData = data;
+            state.currentPage = 1;
+        }
+
+        function sortTable(col) {
+            if (state.sortColumn === col) {
+                state.sortAsc = !state.sortAsc;
+            } else {
+                state.sortColumn = col;
+                state.sortAsc = true;
+            }
+            applyFilterAndSearch();
+            renderTable();
+        }
+
+        function handleSearch() {
+            state.searchQuery = document.getElementById('searchInput').value;
+            applyFilterAndSearch();
+            renderTable();
+        }
+
+        function updatePaginationControls() {
+            const totalPages = Math.ceil(state.filteredData.length / state.pageSize) || 1;
+            document.getElementById('paginationInfo').innerText = `페이지 ${state.currentPage} / ${totalPages} (전체 ${state.filteredData.length.toLocaleString()}건)`;
+            document.getElementById('pageNumbers').innerText = state.currentPage;
+
+            document.getElementById('prevBtn').disabled = state.currentPage <= 1;
+            document.getElementById('nextBtn').disabled = state.currentPage >= totalPages;
+        }
+
+        function changePage(delta) {
+            const totalPages = Math.ceil(state.filteredData.length / state.pageSize) || 1;
+            const newPage = state.currentPage + delta;
+
+            if (newPage >= 1 && newPage <= totalPages) {
+                state.currentPage = newPage;
+                renderTable();
+            }
+        }
+
+        function startCountdownTimer() {
+            if (state.countdownId) clearInterval(state.countdownId);
+
+            state.countdownId = setInterval(() => {
+                const intervalSelect = document.getElementById('intervalSelect');
+                const selectedInterval = parseInt(intervalSelect.value, 10);
+
+                state.refreshIntervalSec = selectedInterval;
+
+                if (selectedInterval === 0) {
+                    document.getElementById('timerText').innerText = '일시정지';
+                    return;
+                }
+
+                state.countdownSec--;
+
+                if (state.countdownSec <= 0) {
+                    state.countdownSec = selectedInterval;
+                    fetchData();
+                }
+
+                document.getElementById('timerText').innerText = `${state.countdownSec}초`;
+            }, 1000);
+        }
+
+        function manualRefresh() {
+            state.countdownSec = state.refreshIntervalSec;
+            fetchData();
+        }
+
+        function updateStatusBadge(type, text) {
+            const badge = document.getElementById('statusBadge');
+            if (!badge) return;
+
+            if (type === 'live') {
+                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 pulse-ring"></span>${text}`;
+            } else if (type === 'updating') {
+                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/30';
+                badge.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>${text}`;
+            } else {
+                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30';
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span>${text}`;
+            }
+            lucide.createIcons();
+        }
+
+        function toggleSettingsModal() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function applyUrlSettings() {
+            const newUrl = document.getElementById('csvUrlInput').value.trim();
+            if (newUrl) {
+                state.csvUrl = newUrl;
+                document.getElementById('dataUrlDisplay').innerText = '커스텀 데이터 연동 중';
+                toggleSettingsModal();
+                manualRefresh();
+            }
+        }
+
+        function exportCSV() {
+            if (state.filteredData.length === 0) return;
+            
+            const csv = Papa.unparse(state.filteredData);
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `dashboard_export_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // Handle window resize for charts
+        window.addEventListener('resize', () => {
+            if (chart1) chart1.resize();
+            if (chart2) chart2.resize();
+            if (chart3) chart3.resize();
+        });
+    </script>
+</body>
+</html>
